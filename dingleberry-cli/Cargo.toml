@@ -1,0 +1,12 @@
+[package]
+name = "dingleberry-cli"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+dingleberry-shared = { path = "../dingleberry-shared" }
+dingleberry-front = { path = "../dingleberry-front" }
+dingleberry-back = { path = "../dingleberry-back" }
+anyhow = "1.0.71"

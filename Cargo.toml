@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "dingleberry-shared",
+    "dingleberry-back",
+    "dingleberry-front",
+    "dingleberry-cli"
+]
