@@ -2,11 +2,59 @@
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
+use std::fmt::{Debug, Display};
+use std::ops::Deref;
 use std::rc::{Rc, Weak};
 
 use dingleberry_front::token::{Token, TokenKind};
 
 use crate::byte_compiler::Function;
+use crate::vm::VM;
+
+type NativeFn = &'static dyn Fn(&mut VM, &[Value]) -> Value;
+
+#[derive(Clone)]
+pub struct NativeFunction {
+    pub identifier: &'static str,
+    pub arg_count: Option<u8>,
+    pub function: NativeFn,
+}
+
+impl NativeFunction {
+    pub fn new(identifier: &'static str, arg_count: Option<u8>, function: NativeFn) -> Self {
+        Self {
+            identifier,
+            arg_count,
+            function,
+        }
+    }
+
+    pub fn alloc(
+        vm: &mut VM,
+        identifier: &'static str,
+        arg_count: Option<u8>,
+        function: NativeFn,
+    ) -> Weak<Object> {
+        vm.allocate(ObjectData::NativeFunction(Self::new(
+            identifier, arg_count, function,
+        )))
+    }
+}
+
+impl Debug for NativeFunction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NativeFunction")
+            .field("identifier", &self.identifier)
+            .field("arg_count", &self.arg_count)
+            .finish()
+    }
+}
+
+impl PartialEq for NativeFunction {
+    fn eq(&self, other: &Self) -> bool {
+        self.identifier == other.identifier && self.arg_count == other.arg_count
+    }
+}
 
 /// These are values that live on the stack
 #[derive(Debug, Clone)]
@@ -15,6 +63,24 @@ pub enum Value {
     Number(f32),
     Boolean(bool),
     Object(Weak<Object>),
+}
+
+impl Display for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::None => write!(f, "None"),
+            Self::Number(n) => write!(f, "{n}"),
+            Self::Boolean(b) => write!(f, "{b}"),
+            Self::Object(o) => write!(f, "{}", o.upgrade().unwrap().data.borrow()),
+        }
+    }
+}
+
+impl Value {
+    #[inline]
+    pub fn kind_equals(&self, other: &Value) -> bool {
+        std::mem::discriminant(self) == std::mem::discriminant(other)
+    }
 }
 
 impl From<Token> for Value {
@@ -47,15 +113,41 @@ impl PartialEq for Value {
 pub enum ObjectData {
     Str(String),
     List(Vec<Value>),
-    Function(Box<Function>),
+    Function(Rc<Function>),
+    NativeFunction(NativeFunction),
+}
+
+impl Display for ObjectData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Str(s) => write!(f, "{s}"),
+            Self::List(values) => {
+                write!(f, "[")?;
+
+                for (idx, value) in values.iter().enumerate() {
+                    write!(f, "{value}")?;
+
+                    if idx < values.len() - 1 {
+                        write!(f, ", ")?;
+                    }
+                }
+
+                write!(f, "]")
+            }
+            Self::Function(func) => write!(f, "fn<{}, {}>", func.identifier, func.arg_count),
+            Self::NativeFunction(func) => {
+                write!(f, "nativefn<{}, {:?}>", func.identifier, func.arg_count)
+            }
+        }
+    }
 }
 
 /// Objects are values that live in the heap
 #[derive(Debug, PartialEq)]
 pub struct Object {
     // Mutable state within the object
-    data: RefCell<ObjectData>,
-    marked: Cell<bool>,
+    pub data: RefCell<ObjectData>,
+    pub marked: Cell<bool>,
 }
 
 /// Generation contains objects
@@ -122,7 +214,7 @@ const GENERATION_SWEEP: u8 = 3;
 /// as multiple parameters would be gross
 pub struct Roots<'a> {
     pub stack: &'a [Value],
-    pub globals: &'a [Value],
+    pub globals: &'a HashMap<String, Value>,
     pub interned_strings: &'a HashMap<u32, Rc<Object>>,
 }
 
@@ -160,7 +252,9 @@ impl GarbageCollector {
         }
 
         match &*root.data.borrow() {
-            &ObjectData::Str(_) | &ObjectData::Function(_) => root.marked.set(true),
+            &ObjectData::Str(_) | &ObjectData::Function(_) | &ObjectData::NativeFunction(_) => {
+                root.marked.set(true)
+            }
 
             &ObjectData::List(ref items) => {
                 for item in items {
@@ -198,7 +292,7 @@ impl GarbageCollector {
             }
         }
 
-        for item in roots.globals {
+        for item in roots.globals.values() {
             if let Value::Object(obj) = item {
                 if let Some(object) = obj.upgrade() {
                     self.mark(&object);

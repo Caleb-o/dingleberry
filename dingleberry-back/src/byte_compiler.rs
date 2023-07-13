@@ -1,4 +1,7 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    rc::{Rc, Weak},
+};
 
 use dingleberry_front::{
     ast::{Ast, AstData},
@@ -11,7 +14,7 @@ use dingleberry_shared::{
 
 use crate::{
     bytecode::ByteCode,
-    gc::{ObjectData, Value},
+    gc::{Object, ObjectData, Value},
     vm::VM,
 };
 
@@ -29,8 +32,8 @@ impl PartialEq for Function {
 }
 
 impl Function {
-    fn new(identifier: String, arg_count: u8) -> Box<Self> {
-        Box::new(Self {
+    fn new(identifier: String, arg_count: u8) -> Rc<Self> {
+        Rc::new(Self {
             identifier,
             arg_count,
             code: Vec::new(),
@@ -54,7 +57,7 @@ impl SymbolTable {
         self.scope.push(HashMap::new());
     }
 
-    fn find_local_symbol<'a>(&self, identifier: &'a str) -> Option<(bool, u8)> {
+    fn find_local_symbol(&self, identifier: &str) -> Option<(bool, u8)> {
         let top_scope = self.scope.last().unwrap();
         for (id, value) in top_scope {
             if *id == identifier {
@@ -65,7 +68,7 @@ impl SymbolTable {
         None
     }
 
-    fn find_symbol_any<'a>(&self, identifier: &'a str) -> Option<(bool, bool, u8)> {
+    fn find_symbol_any(&self, identifier: &str) -> Option<(bool, bool, u8)> {
         for (index, scope) in self.scope.iter().rev().enumerate() {
             for (id, value) in scope {
                 if *id == identifier {
@@ -100,7 +103,7 @@ impl SymbolTable {
 }
 
 pub struct ByteCompiler<'a> {
-    current_func: Option<Box<Function>>,
+    current_func: Option<Rc<Function>>,
     symbol_table: SymbolTable,
     vm: &'a mut VM,
 }
@@ -114,10 +117,21 @@ impl<'a> ByteCompiler<'a> {
         }
     }
 
-    pub fn compile(mut self, root: Box<Ast>) -> Result<Box<Function>, SpruceErr> {
+    pub fn compile(mut self, root: Box<Ast>) -> Result<Weak<Object>, SpruceErr> {
         self.visit(&root)?;
+
         let ByteCompiler { current_func, .. } = self;
-        Ok(current_func.unwrap())
+        let mut current_func = current_func.unwrap();
+        Rc::get_mut(&mut current_func)
+            .unwrap()
+            .code
+            .extend([ByteCode::None, ByteCode::Return]);
+
+        let func = self
+            .vm
+            .allocate(ObjectData::Function(Rc::clone(&current_func)));
+
+        Ok(func)
     }
 
     fn add_constant(&mut self, value: Value) -> u8 {
@@ -135,27 +149,21 @@ impl<'a> ByteCompiler<'a> {
         None
     }
 
-    fn find_global(&self, value: Value) -> Option<u8> {
-        for (idx, v) in self.vm.globals.iter().enumerate() {
-            if *v == value {
-                return Some(idx as u8);
-            }
-        }
-
-        None
-    }
-
     fn close_function(&mut self) -> usize {
+        self.func().code.extend([ByteCode::None, ByteCode::Return]);
+
         let func = self.current_func.take().unwrap();
+        let identifier = func.identifier.clone();
+
         let obj = self.vm.allocate(ObjectData::Function(func));
-        self.vm.globals.push(Value::Object(obj));
+        self.vm.globals.insert(identifier, Value::Object(obj));
 
         self.vm.globals.len()
     }
 
     #[inline]
-    fn fn_code(&mut self) -> &mut Vec<ByteCode> {
-        &mut self.current_func.as_mut().unwrap().code
+    fn func(&mut self) -> &mut Function {
+        Rc::get_mut(self.current_func.as_mut().unwrap()).unwrap()
     }
 }
 
@@ -164,21 +172,35 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
         match &item.data {
             &AstData::Program(_) => self.visit_program(item),
             &AstData::Empty => self.visit_empty(item),
-            _ => todo!("Visit"),
+            &AstData::VarDeclarations(_) => self.visit_var_declarations(item),
+            &AstData::VarDeclaration { .. } => self.visit_var_declaration(item),
+            &AstData::BinaryOp { .. } => self.visit_binary_op(item),
+            &AstData::UnaryOp { .. } => self.visit_unary_op(item),
+            &AstData::FunctionCall { .. } => self.visit_function_call(item),
+            &AstData::Identifier => self.visit_identifier(item),
+            &AstData::Literal => self.visit_literal(item),
+            &AstData::ArrayLiteral(_) => self.visit_array_literal(item),
+            &AstData::ExpressionStatement(_, _) => self.visit_expression_statement(item),
+            n => todo!("Visit {n:?}"),
         }
     }
 
     fn visit_identifier(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
         let AstData::Identifier = &item.data else { unreachable!() };
-        let maybe_values = self
-            .symbol_table
-            .find_symbol_any(item.token.lexeme.as_ref().unwrap().get_slice());
 
-        if let None = maybe_values {}
+        let identifier = item.token.lexeme.as_ref().unwrap().get_slice();
+        let maybe_values = self.symbol_table.find_symbol_any(identifier);
 
-        let (is_global, _, index) = maybe_values.unwrap();
-
-        ByteCode::get_value(is_global, index, self.fn_code());
+        match maybe_values {
+            Some((is_global, _, index)) => {
+                self.func().code.push(ByteCode::GetLocal(index));
+            }
+            None => {
+                self.func()
+                    .code
+                    .push(ByteCode::GetGlobal(identifier.to_string()));
+            }
+        }
 
         Ok(())
     }
@@ -196,10 +218,10 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
         };
 
         if let Some(index) = self.find_constant(&value) {
-            ByteCode::constant(index as u8, self.fn_code());
+            self.func().code.push(ByteCode::ConstantByte(index));
         } else {
             let index = self.add_constant(value);
-            ByteCode::constant(index as u8, self.fn_code());
+            self.func().code.push(ByteCode::ConstantByte(index));
         }
 
         Ok(())
@@ -214,15 +236,48 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
     }
 
     fn visit_array_literal(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        todo!()
+        let AstData::ArrayLiteral(values) = &item.data else { unreachable!() };
+
+        for value in values {
+            self.visit(value)?;
+        }
+
+        if values.len() > u8::MAX as usize {
+            return Err(SpruceErr::new(
+                "More than 256 values in array literal".to_string(),
+                SpruceErrData::Compiler,
+            ));
+        }
+
+        self.func()
+            .code
+            .push(ByteCode::IntoList(values.len() as u8));
+
+        Ok(())
     }
 
     fn visit_expression_statement(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        todo!()
+        let AstData::ExpressionStatement(_, expr) = &item.data else { unreachable!() };
+
+        self.visit(expr)?;
+
+        Ok(())
     }
 
     fn visit_binary_op(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
         let AstData::BinaryOp { lhs, rhs } = &item.data else { unreachable!() } ;
+
+        self.visit(lhs)?;
+        self.visit(rhs)?;
+
+        self.func().code.push(match item.token.kind {
+            TokenKind::Plus => ByteCode::Add,
+            TokenKind::Minus => ByteCode::Sub,
+            TokenKind::Star => ByteCode::Mul,
+            TokenKind::Slash => ByteCode::Div,
+
+            _ => unreachable!(),
+        });
 
         Ok(())
     }
@@ -248,7 +303,24 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
     }
 
     fn visit_function_call(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        todo!()
+        let AstData::FunctionCall { lhs, arguments } = &item.data else { unreachable!() };
+
+        for arg in arguments {
+            self.visit(arg)?;
+        }
+
+        self.visit(lhs)?;
+
+        if arguments.len() > u8::MAX as usize {
+            return Err(SpruceErr::new(
+                "More than 256 arguments in function call".to_string(),
+                SpruceErrData::Compiler,
+            ));
+        }
+
+        self.func().code.push(ByteCode::Call(arguments.len() as u8));
+
+        Ok(())
     }
 
     fn visit_var_declaration(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {

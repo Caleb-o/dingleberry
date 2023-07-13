@@ -1,1 +1,2 @@
-let mut a = 10 * 3 + 4;
+let mut a = [10, 20, 30];
+print(a);

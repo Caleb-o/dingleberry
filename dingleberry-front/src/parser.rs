@@ -883,12 +883,8 @@ impl Parser {
                     statements.push(self.let_declaration()?);
                     self.consume(TokenKind::SemiColon, "Expect ';' after variable statement")?;
                 }
-                _ => {
-                    return Err(self.error(format!(
-                        "Unknown item in outer scope {:?}",
-                        self.current.kind
-                    )))
-                }
+
+                _ => statements.push(self.statement()?),
             }
         }
 

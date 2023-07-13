@@ -31,7 +31,6 @@ impl Source {
     }
 
     pub fn slice_from(&self, span: Span) -> Option<&str> {
-        println!("SPAN: {span:?}");
         if span.start + (span.len as usize) <= self.content.len() {
             Some(&self.content[span.start..(span.start + span.len as usize)])
         } else {
