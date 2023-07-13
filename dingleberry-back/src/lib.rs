@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 use gc::Value;
 use vm::VM;
 

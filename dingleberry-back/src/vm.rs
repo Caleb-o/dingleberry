@@ -134,10 +134,6 @@ impl VM {
             ));
         }
 
-        if cfg!(Debug) {
-            println!("Calling {identifier}");
-        }
-
         if let ObjectData::NativeFunction(func) = &*maybe_function.data.borrow() {
             let arg_count = if func.arg_count.is_some() {
                 func.arg_count.unwrap() as usize

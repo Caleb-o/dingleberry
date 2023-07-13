@@ -3,7 +3,7 @@
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::fmt::{Debug, Display};
-use std::ops::Deref;
+
 use std::rc::{Rc, Weak};
 
 use dingleberry_front::token::{Token, TokenKind};
@@ -230,7 +230,21 @@ impl GarbageCollector {
     }
 
     pub fn allocate<'a>(&mut self, data: ObjectData, roots: Roots<'a>) -> Weak<Object> {
-        self.bytes_allocated += std::mem::size_of_val(&data);
+        let to_alloc_bytes = match &data {
+            ObjectData::Str(_) => std::mem::size_of::<String>(),
+            ObjectData::List(values) => std::mem::size_of::<Value>() * values.capacity(),
+            ObjectData::Function(_) => std::mem::size_of::<Function>(),
+            ObjectData::NativeFunction(_) => std::mem::size_of::<NativeFunction>(),
+        } + std::mem::size_of::<ObjectData>();
+
+        self.bytes_allocated += to_alloc_bytes;
+
+        if cfg!(Debug) {
+            println!(
+                "Allocating {to_alloc_bytes} bytes, total allocated {}",
+                self.bytes_allocated
+            );
+        }
 
         // Check for next collection
         if self.bytes_allocated >= self.next_sweep {
@@ -307,6 +321,9 @@ impl GarbageCollector {
 
     #[inline]
     pub fn collect_garbage<'a>(&mut self, roots: Roots<'a>) {
+        if cfg!(Debug) {
+            println!("Collecting garbage");
+        }
         self.mark_roots(roots);
         self.sweep();
     }
