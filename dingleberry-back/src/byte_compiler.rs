@@ -68,6 +68,17 @@ impl SymbolTable {
         None
     }
 
+    fn find_local_symbol_mut_ref(&mut self, identifier: &str) -> Option<&mut (bool, u8)> {
+        let top_scope = self.scope.last_mut().unwrap();
+        for (id, value) in top_scope {
+            if *id == identifier {
+                return Some(value);
+            }
+        }
+
+        None
+    }
+
     fn find_symbol_any(&self, identifier: &str) -> Option<(bool, bool, u8)> {
         for (index, scope) in self.scope.iter().rev().enumerate() {
             for (id, value) in scope {
@@ -117,7 +128,7 @@ impl<'a> ByteCompiler<'a> {
         }
     }
 
-    pub fn compile(mut self, root: Box<Ast>) -> Result<Weak<Object>, SpruceErr> {
+    pub fn compile(mut self, root: Box<Ast>) -> Result<Value, SpruceErr> {
         self.visit(&root)?;
 
         let ByteCompiler { current_func, .. } = self;
@@ -131,7 +142,7 @@ impl<'a> ByteCompiler<'a> {
             .vm
             .allocate(ObjectData::Function(Rc::clone(&current_func)));
 
-        Ok(func)
+        Ok(Value::Object(func))
     }
 
     fn add_constant(&mut self, value: Value) -> u8 {
@@ -209,10 +220,10 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
         let AstData::Literal = &item.data else { unreachable!() };
 
         let value: Value = if item.token.kind == TokenKind::String {
-            Value::Object(
-                self.vm
-                    .allocate_string(item.token.lexeme.as_ref().unwrap().get_slice().to_string()),
-            )
+            let slice = item.token.lexeme.as_ref().unwrap().get_slice();
+            // Remove quotes
+            let string = slice[1..slice.len() - 1].to_string();
+            Value::Object(self.vm.allocate_string(string))
         } else {
             item.token.clone().into()
         };
@@ -260,6 +271,7 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
         let AstData::ExpressionStatement(_, expr) = &item.data else { unreachable!() };
 
         self.visit(expr)?;
+        self.func().code.push(ByteCode::Pop);
 
         Ok(())
     }
@@ -331,16 +343,14 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
         }
 
         let slice = item.token.lexeme.as_ref().unwrap().get_slice();
-        if let Some(_) = self.symbol_table.find_local_symbol(slice) {
-            return Err(SpruceErr::new(
-                format!("Variable '{slice}' has previously been declared"),
-                SpruceErrData::Compiler,
-            ));
+        if let Some(sym) = self.symbol_table.find_local_symbol_mut_ref(slice) {
+            // Update mutability
+            sym.0 = *is_mutable;
+        } else {
+            _ = self
+                .symbol_table
+                .add_symbol(slice.to_string(), *is_mutable)?;
         }
-
-        _ = self
-            .symbol_table
-            .add_symbol(slice.to_string(), *is_mutable)?;
 
         Ok(())
     }

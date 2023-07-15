@@ -37,12 +37,12 @@ fn main() {
         return;
     }
 
-    if let Err(e) = vm.call(Value::Object(maybe_func.unwrap()), 0) {
+    if let Err(e) = vm.call(maybe_func.unwrap(), 0) {
         println!("Error: {e}");
     }
 
     if let Err(e) = vm.run() {
-        println!("Error: {e}");
+        println!("{e}");
     }
     println!("Stack {:?}", vm.stack);
 }

@@ -38,19 +38,18 @@ impl From<io::Error> for SpruceErr {
 
 impl Display for SpruceErr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "[\x1b[31mError\x1b[0m] {} - {}",
-            self.message,
-            match self.payload {
-                SpruceErrData::Parser {
-                    ref file_path,
-                    line,
-                    column,
-                } => format!("'{}' [{}:{}]", file_path, line, column),
-                SpruceErrData::Analyser { ref file_path } => format!("'{}'", file_path),
-                _ => "".into(),
-            }
-        )
+        let r = write!(f, "[\x1b[31mError\x1b[0m] {} ", self.message);
+
+        match self.payload {
+            SpruceErrData::Parser {
+                ref file_path,
+                line,
+                column,
+            } => write!(f, "'{}' [{}:{}]", file_path, line, column)?,
+            SpruceErrData::Analyser { ref file_path } => write!(f, "'{file_path}'")?,
+            _ => {}
+        }
+
+        r
     }
 }

@@ -9,7 +9,7 @@ use dingleberry_shared::error::{SpruceErr, SpruceErrData};
 use crate::{
     byte_compiler::Function,
     bytecode::ByteCode,
-    gc::{GarbageCollector, NativeFunction, Object, ObjectData, Roots, Value},
+    gc::{GarbageCollector, NativeFn, NativeFunction, Object, ObjectData, Roots, Value},
 };
 
 struct CallFrame {
@@ -122,13 +122,13 @@ impl VM {
             }
         };
 
-        if param_count.is_some() && self.stack.len() < param_count.unwrap() as usize {
+        if param_count.is_some() && arg_count != param_count.unwrap() as usize {
             return Err(SpruceErr::new(
                 format!(
                     "Function '{}' expected {} arguments but received {}",
                     identifier,
                     param_count.unwrap(),
-                    self.stack.len()
+                    arg_count
                 ),
                 SpruceErrData::VM,
             ));
@@ -170,14 +170,18 @@ impl VM {
                     self.stack.push(self.constants[index as usize].clone());
                 }
 
+                ByteCode::Pop => _ = self.stack.pop(),
+
                 ByteCode::Add | ByteCode::Sub | ByteCode::Mul | ByteCode::Div => {
                     let (lhs, rhs) = self.maybe_get_top_two()?;
 
                     if VM::are_numbers(&lhs, &rhs) {
                         self.binary_op_numbers(instruction.clone(), lhs, rhs)?;
+                    } else if VM::are_strings(&lhs, &rhs) {
+                        self.binary_op_strings(instruction.clone(), lhs, rhs)?;
                     } else {
                         return Err(SpruceErr::new(
-                            format!("Invalid types in binary op {lhs:?} and {rhs:?}"),
+                            format!("Invalid values in binary op '{lhs}' and '{rhs}'"),
                             SpruceErrData::VM,
                         ));
                     }
@@ -253,15 +257,41 @@ impl VM {
         Ok(())
     }
 
-    fn register_functions(&mut self) {
-        let func = NativeFunction::alloc(self, "print", None, &super::nt_print);
+    fn register_function(
+        &mut self,
+        identifier: &'static str,
+        param_count: Option<u8>,
+        func: NativeFn,
+    ) {
+        let func = NativeFunction::alloc(self, identifier, param_count, func);
         self.globals
-            .insert("print".to_string(), Value::Object(func));
+            .insert(identifier.to_string(), Value::Object(func));
+    }
+
+    fn register_functions(&mut self) {
+        self.register_function("print", None, &super::nt_print);
+        self.register_function("len", Some(1), &super::nt_len);
     }
 
     #[inline]
     fn are_numbers(lhs: &Value, rhs: &Value) -> bool {
         matches!(lhs, Value::Number(_)) && lhs.kind_equals(&rhs)
+    }
+
+    #[inline]
+    fn are_strings(lhs: &Value, rhs: &Value) -> bool {
+        if let Value::Object(lobj) = lhs {
+            if let Value::Object(robj) = rhs {
+                let left_is = matches!(*lobj.upgrade().unwrap().data.borrow(), ObjectData::Str(_));
+                let right_is = matches!(*robj.upgrade().unwrap().data.borrow(), ObjectData::Str(_));
+
+                if left_is && right_is {
+                    return true;
+                }
+            }
+        }
+
+        false
     }
 
     fn maybe_get_top_two(&mut self) -> Result<(Value, Value), SpruceErr> {
@@ -297,6 +327,33 @@ impl VM {
 
             _ => unreachable!(),
         });
+
+        Ok(())
+    }
+
+    fn binary_op_strings(&mut self, op: ByteCode, lhs: Value, rhs: Value) -> Result<(), SpruceErr> {
+        let Value::Object(robj) = rhs else { unreachable!() };
+        let Value::Object(lobj) = lhs else { unreachable!() };
+
+        let robj = robj.upgrade().unwrap();
+        let lobj = lobj.upgrade().unwrap();
+
+        let ObjectData::Str(rstr) = &*robj.data.borrow() else { unreachable!() };
+        let ObjectData::Str(lstr) = &*lobj.data.borrow() else { unreachable!() };
+
+        match op {
+            ByteCode::Add => {
+                let obj = self.allocate(ObjectData::Str(format!("{lstr}{rstr}")));
+                self.stack.push(Value::Object(obj));
+            }
+
+            _ => {
+                return Err(SpruceErr::new(
+                    format!("Cannot use '{op:?}' on strings"),
+                    SpruceErrData::VM,
+                ))
+            }
+        }
 
         Ok(())
     }

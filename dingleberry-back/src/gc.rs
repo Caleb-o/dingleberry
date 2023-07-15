@@ -11,7 +11,7 @@ use dingleberry_front::token::{Token, TokenKind};
 use crate::byte_compiler::Function;
 use crate::vm::VM;
 
-type NativeFn = &'static dyn Fn(&mut VM, &[Value]) -> Value;
+pub type NativeFn = &'static dyn Fn(&mut VM, &[Value]) -> Value;
 
 #[derive(Clone)]
 pub struct NativeFunction {
@@ -115,6 +115,12 @@ pub enum ObjectData {
     List(Vec<Value>),
     Function(Rc<Function>),
     NativeFunction(NativeFunction),
+}
+
+impl Display for Object {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.data.borrow())
+    }
 }
 
 impl Display for ObjectData {
