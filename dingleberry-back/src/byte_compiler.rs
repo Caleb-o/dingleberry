@@ -235,6 +235,7 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
             &AstData::FunctionCall { .. } => self.visit_function_call(item),
             &AstData::ForStatement { .. } => self.visit_for_statement(item),
             &AstData::Body(_) => self.visit_body(item, true),
+            &AstData::Return(_) => self.visit_return_statement(item),
             &AstData::Identifier => self.visit_identifier(item),
             &AstData::Literal => self.visit_literal(item),
             &AstData::ArrayLiteral(_) => self.visit_array_literal(item),
@@ -515,7 +516,15 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
     }
 
     fn visit_return_statement(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        todo!()
+        let AstData::Return(expr) = &item.data else { unreachable!() } ;
+
+        if let Some(expr) = expr {
+            self.visit(expr)?;
+        }
+
+        self.func().code.push(ByteCode::Return);
+
+        Ok(())
     }
 
     fn visit_body(&mut self, item: &Box<Ast>, new_scope: bool) -> Result<(), SpruceErr> {
