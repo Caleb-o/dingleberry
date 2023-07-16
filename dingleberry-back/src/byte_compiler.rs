@@ -53,8 +53,18 @@ impl SymbolTable {
     }
 
     #[inline]
+    fn is_global(&self) -> bool {
+        self.scope.len() == 1
+    }
+
+    #[inline]
     fn new_scope(&mut self) {
         self.scope.push(HashMap::new());
+    }
+
+    #[inline]
+    fn close_scope(&mut self) {
+        _ = self.scope.pop();
     }
 
     fn find_local_symbol(&self, identifier: &str) -> Option<(bool, u8)> {
@@ -83,7 +93,7 @@ impl SymbolTable {
         for (index, scope) in self.scope.iter().rev().enumerate() {
             for (id, value) in scope {
                 if *id == identifier {
-                    return Some((self.scope.len() - index == 0, value.0, value.1));
+                    return Some((self.scope.len() - index == 1, value.0, value.1));
                 }
             }
         }
@@ -110,6 +120,17 @@ impl SymbolTable {
 
         top_scope.insert(identifier, (is_mutable, top_scope.len() as u8));
         Ok((top_scope.len() - 1) as u8)
+    }
+
+    fn add_global_symbol(
+        &mut self,
+        index: u8,
+        identifier: String,
+        is_mutable: bool,
+    ) -> Result<(), SpruceErr> {
+        let top_scope = self.scope.last_mut().unwrap();
+        top_scope.insert(identifier, (is_mutable, index));
+        Ok(())
     }
 }
 
@@ -160,6 +181,17 @@ impl<'a> ByteCompiler<'a> {
         None
     }
 
+    fn get_string_or_insert(&mut self, identifier: String) -> u8 {
+        let str = self.vm.allocate_string(identifier, true);
+        let str = Value::Object(str);
+
+        if let Some(index) = self.find_constant(&str) {
+            index
+        } else {
+            self.add_constant(str)
+        }
+    }
+
     fn close_function(&mut self) -> usize {
         self.func().code.extend([ByteCode::None, ByteCode::Return]);
 
@@ -188,6 +220,7 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
             &AstData::BinaryOp { .. } => self.visit_binary_op(item),
             &AstData::UnaryOp { .. } => self.visit_unary_op(item),
             &AstData::FunctionCall { .. } => self.visit_function_call(item),
+            &AstData::Body(_) => self.visit_body(item, true),
             &AstData::Identifier => self.visit_identifier(item),
             &AstData::Literal => self.visit_literal(item),
             &AstData::ArrayLiteral(_) => self.visit_array_literal(item),
@@ -203,13 +236,15 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
         let maybe_values = self.symbol_table.find_symbol_any(identifier);
 
         match maybe_values {
-            Some((is_global, _, index)) => {
+            Some((is_global, _, index)) if is_global => {
+                self.func().code.push(ByteCode::GetGlobal(index));
+            }
+            Some((_, _, index)) => {
                 self.func().code.push(ByteCode::GetLocal(index));
             }
             None => {
-                self.func()
-                    .code
-                    .push(ByteCode::GetGlobal(identifier.to_string()));
+                let index = self.get_string_or_insert(identifier.to_string());
+                self.func().code.push(ByteCode::GetGlobal(index));
             }
         }
 
@@ -346,6 +381,21 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
         if let Some(sym) = self.symbol_table.find_local_symbol_mut_ref(slice) {
             // Update mutability
             sym.0 = *is_mutable;
+        } else if self.symbol_table.is_global() {
+            let str = self.vm.allocate_string(slice.to_string(), true);
+            let str = Value::Object(str);
+
+            let index = if let Some(index) = self.find_constant(&str) {
+                index
+            } else {
+                self.add_constant(str)
+            };
+
+            self.func().code.push(ByteCode::DefineGlobal(index));
+
+            _ = self
+                .symbol_table
+                .add_global_symbol(index, slice.to_string(), *is_mutable)?;
         } else {
             _ = self
                 .symbol_table
@@ -412,8 +462,16 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
     fn visit_body(&mut self, item: &Box<Ast>, new_scope: bool) -> Result<(), SpruceErr> {
         let AstData::Body(statements) = &item.data else { unreachable!() };
 
+        if new_scope {
+            self.symbol_table.new_scope();
+        }
+
         for stmt in statements {
             self.visit(stmt)?;
+        }
+
+        if new_scope {
+            self.symbol_table.close_scope();
         }
 
         Ok(())

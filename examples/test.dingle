@@ -3,3 +3,9 @@ print(a);
 print(len(a));
 print('Hello' + ', World!');
 print(len('Hello' + 'Goodbye'));
+     
+{
+    let b = 20;
+    let c = 30;
+    print(b * b + c);
+}

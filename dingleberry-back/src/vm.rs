@@ -172,6 +172,8 @@ impl VM {
     pub fn run(&mut self) -> Result<(), SpruceErr> {
         self.register_functions();
 
+        println!("Code {:?}", self.get_function().code);
+
         while self.running {
             let instruction = self.get_next_inst();
             match instruction {
@@ -185,15 +187,22 @@ impl VM {
                     let (lhs, rhs) = self.maybe_get_top_two()?;
 
                     if VM::are_numbers(&lhs, &rhs) {
-                        self.binary_op_numbers(instruction.clone(), lhs, rhs)?;
+                        self.binary_op_numbers(instruction, lhs, rhs)?;
                     } else if VM::are_strings(&lhs, &rhs) {
-                        self.binary_op_strings(instruction.clone(), lhs, rhs)?;
+                        self.binary_op_strings(instruction, lhs, rhs)?;
                     } else {
                         return Err(SpruceErr::new(
                             format!("Invalid values in binary op '{lhs}' and '{rhs}'"),
                             SpruceErrData::VM,
                         ));
                     }
+                }
+
+                ByteCode::DefineGlobal(index) => {
+                    let id = self.get_string(index);
+
+                    let value = self.pop();
+                    self.globals.insert(id, value);
                 }
 
                 ByteCode::SetLocal(index) => {
@@ -206,30 +215,36 @@ impl VM {
                     self.stack.push(self.stack[start + index as usize].clone());
                 }
 
-                ByteCode::SetGlobal(identifier) => {
-                    if self.globals.contains_key(&identifier) {
+                ByteCode::SetGlobal(index) => {
+                    let id = self.get_string(index);
+
+                    if self.globals.contains_key(&id) {
                         let val = self.peek();
-                        let value = self.globals.get_mut(&identifier).unwrap();
+                        let value = self.globals.get_mut(&id).unwrap();
                         *value = val;
                     } else {
                         return Err(SpruceErr::new(
-                            format!("Cannot find global '{identifier}'"),
+                            format!("Cannot find global '{id}'"),
                             SpruceErrData::VM,
                         ));
                     }
                 }
 
-                ByteCode::GetGlobal(identifier) => match self.globals.get(&identifier) {
-                    Some(value) => {
-                        self.stack.push(value.clone());
+                ByteCode::GetGlobal(index) => {
+                    let id = self.get_string(index);
+
+                    match self.globals.get(&id) {
+                        Some(value) => {
+                            self.stack.push(value.clone());
+                        }
+                        None => {
+                            return Err(SpruceErr::new(
+                                format!("Cannot find global '{id}'"),
+                                SpruceErrData::VM,
+                            ));
+                        }
                     }
-                    None => {
-                        return Err(SpruceErr::new(
-                            format!("Cannot find global '{identifier}'"),
-                            SpruceErrData::VM,
-                        ));
-                    }
-                },
+                }
 
                 ByteCode::IntoList(count) => {
                     let start = self.func_stack_start();
@@ -264,6 +279,16 @@ impl VM {
         }
 
         Ok(())
+    }
+
+    fn get_string(&self, index: u8) -> String {
+        let constant = &self.constants[index as usize];
+        let Value::Object(obj) = constant else { unreachable!() };
+
+        let obj = obj.upgrade().unwrap();
+        let ObjectData::Str(str) = &*obj.data.borrow() else { unreachable!() };
+
+        str.clone()
     }
 
     fn register_function(
@@ -394,7 +419,7 @@ impl VM {
             return ByteCode::Return;
         }
 
-        let code = function.code[frame.ip].clone();
+        let code = function.code[frame.ip];
         frame.ip += 1;
 
         code
