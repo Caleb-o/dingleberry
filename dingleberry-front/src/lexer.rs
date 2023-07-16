@@ -176,7 +176,11 @@ impl Lexer {
             'r' => self.check_if_matches(start, len, &[("eturn", TokenKind::Return)]),
             's' => self.check_if_matches(start, len, &[("witch", TokenKind::Switch)]),
             'l' => self.check_if_matches(start, len, &[("et", TokenKind::Let)]),
-            'm' => self.check_if_matches(start, len, &[("ut", TokenKind::Mutable)]),
+            'm' => self.check_if_matches(
+                start,
+                len,
+                &[("ut", TokenKind::Mutable), ("odule", TokenKind::Module)],
+            ),
             't' => self.check_if_matches(start, len, &[("rue", TokenKind::True)]),
             'w' => self.check_if_matches(start, len, &[("hile", TokenKind::While)]),
 
@@ -275,7 +279,7 @@ impl Lexer {
                 '#' => {
                     self.advance();
 
-                    while self.peek() != '\n' {
+                    while self.peek() != 0 as char && self.peek() != '\n' {
                         self.advance();
                     }
                 }

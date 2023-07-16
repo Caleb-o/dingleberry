@@ -56,6 +56,7 @@ pub enum TokenKind {
     Let,
     Mutable,
     UnderscoreUnderscore,
+    Module,
 
     EndOfFile,
     Error,

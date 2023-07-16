@@ -37,6 +37,7 @@ pub trait Visitor<T, U> {
     fn visit_return_statement(&mut self, item: &T) -> Result<U, SpruceErr>;
     fn visit_body(&mut self, item: &T, new_scope: bool) -> Result<U, SpruceErr>;
     fn visit_include(&mut self, item: &T) -> Result<U, SpruceErr>;
+    fn visit_module(&mut self, item: &T) -> Result<U, SpruceErr>;
     fn visit_program(&mut self, item: &T) -> Result<U, SpruceErr>;
     fn visit_empty(&mut self, item: &T) -> Result<U, SpruceErr>;
 }

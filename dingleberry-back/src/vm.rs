@@ -15,7 +15,8 @@ use crate::{
     value::Value,
 };
 
-const RUNTIME_INTERNING: bool = false;
+const RUNTIME_INTERNING: bool = true;
+const STRINGS_BEFORE_SWEEP: usize = 64;
 
 struct CallFrame {
     pub ip: usize,
@@ -31,6 +32,8 @@ pub struct VM {
     pub globals: HashMap<String, Value>,
     pub interned_strings: HashMap<u32, Rc<Object>>,
 
+    string_allocs: usize,
+
     call_stack: Vec<CallFrame>,
     running: bool,
 }
@@ -43,9 +46,10 @@ impl VM {
             constants: Vec::new(),
             globals: HashMap::new(),
             interned_strings: HashMap::with_capacity(8),
+            string_allocs: 0,
 
             call_stack: Vec::new(),
-            running: true,
+            running: false,
         }
     }
 
@@ -80,14 +84,25 @@ impl VM {
         data.hash(&mut hasher);
         let hash = hasher.finish() as u32;
 
-        if let Some(object) = self.interned_strings.get(&hash) {
+        let obj = if let Some(object) = self.interned_strings.get(&hash) {
             Rc::downgrade(object)
         } else {
             let obj = self.allocate(ObjectData::Str(data));
-            self.interned_strings
-                .insert(hash, obj.clone().upgrade().unwrap());
+            if intern {
+                self.string_allocs += 1;
+                self.interned_strings
+                    .insert(hash, obj.clone().upgrade().unwrap());
+            }
+
             obj
+        };
+
+        if self.string_allocs >= STRINGS_BEFORE_SWEEP {
+            self.string_allocs = 0;
+            self.cleanup_strings();
         }
+
+        obj
     }
 
     #[inline]
@@ -108,7 +123,7 @@ impl VM {
     pub fn call(&mut self, maybe_function: Value, arg_count: usize) -> Result<(), SpruceErr> {
         if !matches!(maybe_function, Value::Object(_)) {
             return Err(SpruceErr::new(
-                "Cannot call values".into(),
+                format!("Cannot call value {maybe_function}"),
                 SpruceErrData::VM,
             ));
         }
@@ -125,7 +140,8 @@ impl VM {
                 (function.identifier.to_string(), function.arg_count)
             }
 
-            n @ (ObjectData::Str(_) | ObjectData::List(_)) => {
+            // TODO: Consider a module constructor
+            n @ (ObjectData::Str(_) | ObjectData::List(_) | ObjectData::Module { .. }) => {
                 return Err(SpruceErr::new(
                     format!("Cannot call non-function value '{n:?}'"),
                     SpruceErrData::VM,
@@ -171,6 +187,7 @@ impl VM {
     }
 
     pub fn start(&mut self) {
+        self.running = true;
         self.register_functions();
 
         if let Err(e) = self.run() {
@@ -284,6 +301,12 @@ impl VM {
                     self.index_item_set(index_item, index_expr, value)?;
                 }
 
+                ByteCode::PropertyGet(index) => {
+                    let item = self.pop();
+                    let property = self.get_string(index);
+                    self.get_property(item, property)?;
+                }
+
                 ByteCode::Jump(index) => self.set_current_ip(index as usize),
 
                 ByteCode::IntoList(count) => {
@@ -321,7 +344,7 @@ impl VM {
         Ok(())
     }
 
-    fn get_string(&self, index: u8) -> String {
+    fn get_string(&self, index: u16) -> String {
         let constant = &self.constants[index as usize];
         let Value::Object(obj) = constant else { unreachable!() };
 
@@ -329,6 +352,12 @@ impl VM {
         let ObjectData::Str(str) = &*obj.data.borrow() else { unreachable!() };
 
         str.clone()
+    }
+
+    fn cleanup_strings(&mut self) {
+        _ = self
+            .interned_strings
+            .retain(|_, v| Rc::strong_count(v) > 0 && Rc::weak_count(v) > 0);
     }
 
     fn register_function(
@@ -476,6 +505,35 @@ impl VM {
         } else {
             return Err(SpruceErr::new(
                 format!("Cannot index into item '{index_item}'"),
+                SpruceErrData::VM,
+            ));
+        }
+
+        Ok(())
+    }
+
+    fn get_property(&mut self, item: Value, property: String) -> Result<(), SpruceErr> {
+        if let Value::Object(obj) = &item {
+            match &*obj.upgrade().unwrap().data.borrow() {
+                &ObjectData::Module(ref module) => {
+                    self.push(
+                        module
+                            .items
+                            .get(&property)
+                            .map(|v| (*v).clone())
+                            .unwrap_or(Value::None),
+                    );
+                }
+                n => {
+                    return Err(SpruceErr::new(
+                        format!("Cannot access property on {n:?}"),
+                        SpruceErrData::VM,
+                    ))
+                }
+            }
+        } else {
+            return Err(SpruceErr::new(
+                format!("Cannot access property on {item:?}"),
                 SpruceErrData::VM,
             ));
         }

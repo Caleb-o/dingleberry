@@ -468,6 +468,32 @@ impl Parser {
         }
     }
 
+    fn module_statement(&mut self) -> Result<Box<Ast>, SpruceErr> {
+        self.consume_here();
+
+        let identifier = self.get_current();
+        self.consume(TokenKind::Identifier, "Expect identifier after 'module'")?;
+        self.consume(TokenKind::LCurly, "Expect '{' after module identifier")?;
+
+        let mut statements = Vec::new();
+
+        while self.current.kind != TokenKind::EndOfFile && self.current.kind != TokenKind::RCurly {
+            statements.push(match self.current.kind {
+                TokenKind::Module => self.module_statement()?,
+                TokenKind::Function => self.function()?,
+                // TokenKind::Let => self.let_declaration()?,
+                _ => {
+                    return Err(self.error(
+                        "Unknown item in module body. Can only have functions and modules".into(),
+                    ))
+                }
+            });
+        }
+
+        self.consume(TokenKind::RCurly, "Expect '}' after module body")?;
+        Ok(Ast::new_module(identifier, statements))
+    }
+
     fn if_expression_statement(&mut self, force_else: bool) -> Result<Box<Ast>, SpruceErr> {
         let token = self.get_current();
         self.consume_here();
@@ -493,22 +519,14 @@ impl Parser {
         ))
     }
 
-    fn get_identifier(&mut self) -> Result<Box<Ast>, SpruceErr> {
-        let token = self.get_current();
-        self.consume(TokenKind::Identifier, "Expected identifier")?;
-
-        Ok(Ast::new_identifier(token))
-    }
-
     fn for_statement(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let token = self.get_current();
         self.consume_here();
 
-        let variable = if self.current.kind == TokenKind::UnderscoreUnderscore {
-            self.consume_here();
-            None
-        } else {
+        let variable = if self.current.kind != TokenKind::LCurly {
             Some(self.let_declaration()?)
+        } else {
+            None
         };
 
         let expr = if self.current.kind == TokenKind::In {
@@ -577,7 +595,7 @@ impl Parser {
     }
 
     fn statement(&mut self) -> Result<Box<Ast>, SpruceErr> {
-        let mut node = match self.current.kind {
+        let node = match self.current.kind {
             TokenKind::Function => {
                 let func = self.function()?;
                 if let AstData::Function { body, .. } = &func.data {
@@ -587,6 +605,7 @@ impl Parser {
                 }
                 func
             }
+            TokenKind::Module => self.module_statement()?,
             TokenKind::If => self.if_expression_statement(false)?,
             TokenKind::For => self.for_statement()?,
             TokenKind::Switch => self.switch_statement()?,
@@ -605,40 +624,13 @@ impl Parser {
             }
         };
 
-        // Trailing if statement
         match node.data {
-            // Disallow after certain types of statement
-            AstData::Comment
-            | AstData::IfStatement { .. }
-            | AstData::SwitchStatement { .. }
-            | AstData::Function { .. } => {}
-            _ => {
-                if self.current.kind == TokenKind::If {
-                    let token = self.get_current();
-                    self.consume_here();
-                    node = Ast::new_if_statement(
-                        token.clone(),
-                        false,
-                        self.expression()?,
-                        Ast::new_body(token, vec![node]),
-                        None,
-                    );
-
-                    self.consume(
-                        TokenKind::SemiColon,
-                        "Expect ';' after trailing if statement",
-                    )?;
-                    return Ok(node);
-                }
-            }
-        }
-
-        match node.data {
-            AstData::Comment
-            | AstData::SwitchStatement { .. }
+            AstData::SwitchStatement { .. }
             | AstData::Function { .. }
             | AstData::IfStatement { .. }
+            | AstData::Module(_)
             | AstData::ForStatement { .. } => {}
+
             _ => self.consume(TokenKind::SemiColon, "Expect ';' after statement")?,
         }
 

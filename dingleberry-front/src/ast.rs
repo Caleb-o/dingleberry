@@ -16,8 +16,6 @@ pub enum AstData {
     ArrayLiteral(Vec<Box<Ast>>),
     ExpressionStatement(bool, Box<Ast>),
 
-    Comment,
-
     BinaryOp {
         lhs: Box<Ast>,
         rhs: Box<Ast>,
@@ -103,6 +101,7 @@ pub enum AstData {
     Return(Option<Box<Ast>>),
     Body(Vec<Box<Ast>>),
     StdInclude,
+    Module(Vec<Box<Ast>>),
     Program(Vec<Box<Ast>>),
     Empty,
 }
@@ -119,6 +118,13 @@ impl Ast {
         Box::new(Self {
             token,
             data: AstData::StdInclude,
+        })
+    }
+
+    pub fn new_module(token: Token, body: Vec<Box<Ast>>) -> Box<Self> {
+        Box::new(Self {
+            token,
+            data: AstData::Module(body),
         })
     }
 
@@ -175,13 +181,6 @@ impl Ast {
         Box::new(Self {
             token,
             data: AstData::Identifier,
-        })
-    }
-
-    pub fn new_comment(token: Token) -> Box<Self> {
-        Box::new(Self {
-            token,
-            data: AstData::Comment,
         })
     }
 

@@ -29,6 +29,7 @@ fn nt_len(_: &mut VM, args: &[Value]) -> Value {
             ObjectData::List(l) => l.len(),
             ObjectData::Function(f) => f.arg_count as usize,
             ObjectData::NativeFunction(f) => f.arg_count.unwrap_or_default() as usize,
+            ObjectData::Module(m) => m.items.len(),
         },
     } as f32;
 

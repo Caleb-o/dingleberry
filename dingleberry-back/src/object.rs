@@ -1,10 +1,17 @@
 use std::{
     cell::{Cell, RefCell},
+    collections::HashMap,
     fmt::{Debug, Display},
     rc::Rc,
 };
 
 use crate::{byte_compiler::Function, nativefunction::NativeFunction, value::Value};
+
+#[derive(Clone, PartialEq)]
+pub struct Module {
+    pub identifier: String,
+    pub items: HashMap<String, Value>,
+}
 
 /// Data that lives inside of an object, like heaped values
 #[derive(Clone, PartialEq)]
@@ -13,6 +20,7 @@ pub enum ObjectData {
     List(Vec<Value>),
     Function(Rc<Function>),
     NativeFunction(NativeFunction),
+    Module(Rc<Module>),
 }
 
 impl Debug for ObjectData {
@@ -22,13 +30,8 @@ impl Debug for ObjectData {
             Self::List(_) => write!(f, "List"),
             Self::Function(_) => write!(f, "Function"),
             Self::NativeFunction(_) => write!(f, "NativeFunction"),
+            Self::Module { .. } => write!(f, "Module"),
         }
-    }
-}
-
-impl Display for Object {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.data.borrow())
     }
 }
 
@@ -49,15 +52,19 @@ impl Display for ObjectData {
 
                 write!(f, "]")
             }
+
             Self::Function(func) => write!(
                 f,
                 "fn<{}, {}>",
                 func.identifier.as_ref().unwrap_or(&"Anonymous".into()),
                 func.arg_count
             ),
+
             Self::NativeFunction(func) => {
                 write!(f, "nativefn<{}, {:?}>", func.identifier, func.arg_count)
             }
+
+            Self::Module(m) => write!(f, "module<{}>", m.identifier),
         }
     }
 }
@@ -73,5 +80,11 @@ pub struct Object {
 impl Debug for Object {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self.data)
+    }
+}
+
+impl Display for Object {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.data.borrow())
     }
 }

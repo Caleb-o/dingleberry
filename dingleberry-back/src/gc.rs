@@ -90,11 +90,13 @@ impl GarbageCollector {
     }
 
     pub fn allocate<'a>(&mut self, data: ObjectData, roots: Roots<'a>) -> Weak<Object> {
+        // NOTE: These are *rough* values to track byte sizes
         let to_alloc_bytes = match &data {
             ObjectData::Str(s) => std::mem::size_of::<String>() + s.as_bytes().len(),
             ObjectData::List(values) => std::mem::size_of::<Value>() * values.capacity(),
             ObjectData::Function(_) => std::mem::size_of::<Function>(),
             ObjectData::NativeFunction(_) => std::mem::size_of::<NativeFunction>(),
+            ObjectData::Module(m) => std::mem::size_of::<Value>() * m.items.len(),
         } + std::mem::size_of::<ObjectData>();
 
         self.bytes_allocated += to_alloc_bytes;
@@ -108,7 +110,7 @@ impl GarbageCollector {
 
         // Check for next collection
         if self.bytes_allocated >= self.next_sweep {
-            _ = self.collect_garbage(roots);
+            self.collect_garbage(roots);
         }
 
         let obj = Rc::new(Object {
@@ -136,6 +138,16 @@ impl GarbageCollector {
                         self.mark(&obj.upgrade().unwrap());
                     }
                 }
+                root.marked.set(true);
+            }
+
+            &ObjectData::Module(ref m) => {
+                for item in m.items.values() {
+                    if let Value::Object(ref obj) = &*item {
+                        self.mark(&obj.upgrade().unwrap());
+                    }
+                }
+                root.marked.set(true);
             }
         }
     }

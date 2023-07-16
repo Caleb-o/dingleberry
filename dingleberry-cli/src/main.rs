@@ -43,5 +43,4 @@ fn main() {
     }
 
     vm.start();
-    println!("Stack {:?}", vm.stack);
 }

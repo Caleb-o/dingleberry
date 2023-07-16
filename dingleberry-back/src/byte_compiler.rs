@@ -1,4 +1,4 @@
-use std::{collections::HashMap, rc::Rc};
+use std::{collections::HashMap, process::id, rc::Rc};
 
 use dingleberry_front::{
     ast::{Ast, AstData},
@@ -10,7 +10,12 @@ use dingleberry_shared::{
     visitor::Visitor,
 };
 
-use crate::{bytecode::ByteCode, object::ObjectData, value::Value, vm::VM};
+use crate::{
+    bytecode::ByteCode,
+    object::{Module, ObjectData},
+    value::Value,
+    vm::VM,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Context {
@@ -42,7 +47,7 @@ impl Function {
 }
 
 struct SymbolTable {
-    scope: Vec<HashMap<String, (bool, u8)>>,
+    scope: Vec<HashMap<String, (bool, u16)>>,
 }
 
 impl SymbolTable {
@@ -72,7 +77,7 @@ impl SymbolTable {
         _ = self.scope.pop();
     }
 
-    fn find_local_symbol(&self, identifier: &str) -> Option<(bool, u8)> {
+    fn find_local_symbol(&self, identifier: &str) -> Option<(bool, u16)> {
         let top_scope = self.scope.last().unwrap();
         for (id, value) in top_scope {
             if *id == identifier {
@@ -83,7 +88,7 @@ impl SymbolTable {
         None
     }
 
-    fn find_local_symbol_mut_ref(&mut self, identifier: &str) -> Option<&mut (bool, u8)> {
+    fn find_local_symbol_mut_ref(&mut self, identifier: &str) -> Option<&mut (bool, u16)> {
         let top_scope = self.scope.last_mut().unwrap();
         for (id, value) in top_scope {
             if *id == identifier {
@@ -94,7 +99,7 @@ impl SymbolTable {
         None
     }
 
-    fn find_symbol_any(&self, identifier: &str) -> Option<(bool, bool, u8)> {
+    fn find_symbol_any(&self, identifier: &str) -> Option<(bool, bool, u16)> {
         for (index, scope) in self.scope.iter().rev().enumerate() {
             for (id, value) in scope {
                 if *id == identifier {
@@ -123,13 +128,13 @@ impl SymbolTable {
             ));
         }
 
-        top_scope.insert(identifier, (is_mutable, top_scope.len() as u8));
+        top_scope.insert(identifier, (is_mutable, top_scope.len() as u16));
         Ok((top_scope.len() - 1) as u8)
     }
 
     fn add_global_symbol(
         &mut self,
-        index: u8,
+        index: u16,
         identifier: String,
         is_mutable: bool,
     ) -> Result<(), SpruceErr> {
@@ -141,6 +146,7 @@ impl SymbolTable {
 
 pub struct ByteCompiler<'a> {
     current_func: Option<Rc<Function>>,
+    current_mod: Option<Module>,
     symbol_table: SymbolTable,
     ctx: Context,
     vm: &'a mut VM,
@@ -150,6 +156,7 @@ impl<'a> ByteCompiler<'a> {
     pub fn new(vm: &'a mut VM) -> Self {
         Self {
             current_func: Some(Function::new(Some("script".into()), 0)),
+            current_mod: None,
             symbol_table: SymbolTable::new(),
             ctx: Context::None,
             vm,
@@ -173,22 +180,22 @@ impl<'a> ByteCompiler<'a> {
         Ok(Value::Object(func))
     }
 
-    fn add_constant(&mut self, value: Value) -> u8 {
+    fn add_constant(&mut self, value: Value) -> u16 {
         self.vm.constants.push(value);
-        (self.vm.constants.len() - 1) as u8
+        (self.vm.constants.len() - 1) as u16
     }
 
-    fn find_constant(&self, value: &Value) -> Option<u8> {
+    fn find_constant(&self, value: &Value) -> Option<u16> {
         for (idx, v) in self.vm.constants.iter().enumerate() {
             if *v == *value {
-                return Some(idx as u8);
+                return Some(idx as u16);
             }
         }
 
         None
     }
 
-    fn get_string_or_insert(&mut self, identifier: String) -> u8 {
+    fn get_string_or_insert(&mut self, identifier: String) -> u16 {
         let str = self.vm.allocate_string(identifier, true);
         let str = Value::Object(str);
 
@@ -197,6 +204,36 @@ impl<'a> ByteCompiler<'a> {
         } else {
             self.add_constant(str)
         }
+    }
+
+    #[inline]
+    fn open_module(&mut self, identifier: String) {
+        self.current_mod = Some(Module {
+            identifier,
+            items: HashMap::new(),
+        });
+    }
+
+    #[inline]
+    fn close_module(&mut self, last_mod: Option<Module>) -> u16 {
+        let module = self.current_mod.take().unwrap();
+        let identifier = module.identifier.clone();
+        self.current_mod = last_mod;
+
+        let module = self.vm.allocate(ObjectData::Module(Rc::new(module)));
+        self.vm.constants.push(Value::Object(module.clone()));
+
+        if self.current_mod.is_none() {
+            self.vm.globals.insert(identifier, Value::Object(module));
+        }
+
+        (self.vm.constants.len() - 1) as u16
+    }
+
+    #[inline]
+    fn add_item_to_module(&mut self, identifier: String, value: Value) {
+        let module = self.current_mod.as_mut().unwrap();
+        module.items.insert(identifier, value);
     }
 
     #[inline]
@@ -213,7 +250,7 @@ impl<'a> ByteCompiler<'a> {
         let func = self.current_func.take().unwrap();
         self.current_func = last_fn;
 
-        if anonymous {
+        if anonymous || self.current_mod.is_some() {
             let obj = self.vm.allocate(ObjectData::Function(func));
             self.vm.constants.push(Value::Object(obj));
             Some((self.vm.constants.len() - 1) as u8)
@@ -238,6 +275,7 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
             &AstData::Empty => self.visit_empty(item),
             &AstData::VarDeclarations(_) => self.visit_var_declarations(item),
             &AstData::VarDeclaration { .. } => self.visit_var_declaration(item),
+            &AstData::VarAssign { .. } => self.visit_var_assign(item),
             &AstData::Function { .. } => self.visit_function(item),
             &AstData::BinaryOp { .. } => self.visit_binary_op(item),
             &AstData::UnaryOp { .. } => self.visit_unary_op(item),
@@ -245,8 +283,10 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
             &AstData::ForStatement { .. } => self.visit_for_statement(item),
             &AstData::IndexGetter { .. } => self.visit_index_getter(item),
             &AstData::IndexSetter { .. } => self.visit_index_setter(item),
+            &AstData::PropertyGetter { .. } => self.visit_property_getter(item),
             &AstData::Body(_) => self.visit_body(item, true),
             &AstData::Return(_) => self.visit_return_statement(item),
+            &AstData::Module(_) => self.visit_module(item),
             &AstData::Identifier => self.visit_identifier(item),
             &AstData::Literal => self.visit_literal(item),
             &AstData::ArrayLiteral(_) => self.visit_array_literal(item),
@@ -266,7 +306,7 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
                 self.func().code.push(ByteCode::GetGlobal(index));
             }
             Some((_, _, index)) => {
-                self.func().code.push(ByteCode::GetLocal(index));
+                self.func().code.push(ByteCode::GetLocal(index as u8));
             }
             None => {
                 let index = self.get_string_or_insert(identifier.to_string());
@@ -290,10 +330,10 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
         };
 
         if let Some(index) = self.find_constant(&value) {
-            self.func().code.push(ByteCode::ConstantByte(index));
+            self.func().code.push(ByteCode::ConstantByte(index as u8));
         } else {
             let index = self.add_constant(value);
-            self.func().code.push(ByteCode::ConstantByte(index));
+            self.func().code.push(ByteCode::ConstantByte(index as u8));
         }
 
         Ok(())
@@ -342,7 +382,11 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
         let AstData::ExpressionStatement(_, expr) = &item.data else { unreachable!() };
 
         self.visit(expr)?;
-        self.func().code.push(ByteCode::Pop);
+
+        match expr.data {
+            AstData::Body(_) => {}
+            _ => self.func().code.push(ByteCode::Pop),
+        }
 
         Ok(())
     }
@@ -366,7 +410,12 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
     }
 
     fn visit_unary_op(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        todo!()
+        let AstData::UnaryOp { rhs } = &item.data else { unreachable!() };
+
+        self.visit(rhs)?;
+        self.func().code.push(ByteCode::Negate);
+
+        Ok(())
     }
 
     fn visit_logical_op(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
@@ -396,7 +445,7 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
             None
         };
         self.open_function(
-            identifier,
+            identifier.clone(),
             parameters
                 .as_ref()
                 .map(|p| p.len() as u8)
@@ -412,7 +461,12 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
         self.visit(body)?;
 
         if let Some(index) = self.close_function(*anonymous, last_function) {
-            self.func().code.push(ByteCode::ConstantByte(index));
+            if !anonymous && self.current_mod.is_some() {
+                let func = &self.vm.constants[index as usize];
+                self.add_item_to_module(identifier.unwrap().clone(), func.clone());
+            } else if *anonymous {
+                self.func().code.push(ByteCode::ConstantByte(index));
+            }
         }
 
         self.ctx = last_ctx;
@@ -496,7 +550,53 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
     }
 
     fn visit_var_assign(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        todo!()
+        let AstData::VarAssign { lhs, expression } = &item.data else { unreachable!() };
+
+        self.visit(expression)?;
+
+        let identifier = lhs.token.lexeme.as_ref().unwrap().get_slice().to_string();
+        if let Some((is_global, is_mutable, index)) = self.symbol_table.find_symbol_any(&identifier)
+        {
+            if !is_mutable {
+                let file_path = item
+                    .token
+                    .lexeme
+                    .as_ref()
+                    .map(|span| (*span.source.file_path).clone());
+
+                return Err(SpruceErr::new(
+                    format!("Cannot mutate immutable identifier '{identifier}'"),
+                    SpruceErrData::Compiler {
+                        file_path,
+                        line: item.token.line,
+                        column: item.token.column,
+                    },
+                ));
+            }
+
+            self.func().code.push(if is_global {
+                ByteCode::SetGlobal(index)
+            } else {
+                ByteCode::SetLocal(index as u8)
+            });
+        } else {
+            let file_path = item
+                .token
+                .lexeme
+                .as_ref()
+                .map(|span| (*span.source.file_path).clone());
+
+            return Err(SpruceErr::new(
+                format!("Binding '{identifier}' does not exist"),
+                SpruceErrData::Compiler {
+                    file_path,
+                    line: item.token.line,
+                    column: item.token.column,
+                },
+            ));
+        }
+
+        Ok(())
     }
 
     fn visit_var_assign_equal(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
@@ -547,7 +647,21 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
     }
 
     fn visit_property_getter(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        todo!()
+        let AstData::PropertyGetter { lhs, property } = &item.data else { unreachable!() };
+
+        self.visit(lhs)?;
+
+        let identifier = property
+            .token
+            .lexeme
+            .as_ref()
+            .unwrap()
+            .get_slice()
+            .to_string();
+        let identifier = self.get_string_or_insert(identifier);
+        self.func().code.push(ByteCode::PropertyGet(identifier));
+
+        Ok(())
     }
 
     fn visit_property_setter(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
@@ -603,7 +717,13 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
         }
 
         let locals = self.symbol_table.current_locals();
-        self.func().code.push(ByteCode::PopN(locals));
+        if locals > 0 {
+            self.func().code.push(if locals > 1 {
+                ByteCode::PopN(locals)
+            } else {
+                ByteCode::Pop
+            });
+        }
 
         if new_scope {
             self.symbol_table.close_scope();
@@ -627,6 +747,31 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
     }
 
     fn visit_empty(&mut self, _: &Box<Ast>) -> Result<(), SpruceErr> {
+        Ok(())
+    }
+
+    fn visit_module(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
+        let AstData::Module(items) = &item.data else { unreachable!() };
+
+        let identifier = item.token.lexeme.as_ref().unwrap().get_slice().to_string();
+        let last_mod = self.current_mod.take();
+
+        self.open_module(identifier.clone());
+
+        for item in items {
+            self.visit(item)?;
+        }
+
+        let module_idx = self.close_module(last_mod);
+
+        if self.current_mod.is_some() {
+            let module = &self.vm.constants[module_idx as usize];
+            self.add_item_to_module(identifier, module.clone());
+        } else {
+            self.func()
+                .code
+                .push(ByteCode::ConstantByte(module_idx as u8));
+        }
         Ok(())
     }
 }

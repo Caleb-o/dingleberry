@@ -1,6 +1,8 @@
 #[derive(Debug, Clone, Copy)]
 pub enum ByteCode {
     ConstantByte(u8),
+    ConstantShort(u16),
+
     Pop,
     PopN(u8),
 
@@ -8,16 +10,20 @@ pub enum ByteCode {
     Sub,
     Mul,
     Div,
+    Negate,
 
-    DefineGlobal(u8),
+    DefineGlobal(u16),
 
     GetLocal(u8),
     SetLocal(u8),
-    GetGlobal(u8),
-    SetGlobal(u8),
+    GetGlobal(u16),
+    SetGlobal(u16),
 
     IndexGet,
     IndexSet,
+
+    PropertyGet(u16),
+    PropertySet(u16),
 
     Jump(u16),
     JumpNot(u16),
