@@ -49,7 +49,12 @@ impl Display for ObjectData {
 
                 write!(f, "]")
             }
-            Self::Function(func) => write!(f, "fn<{}, {}>", func.identifier, func.arg_count),
+            Self::Function(func) => write!(
+                f,
+                "fn<{}, {}>",
+                func.identifier.as_ref().unwrap_or(&"Anonymous".into()),
+                func.arg_count
+            ),
             Self::NativeFunction(func) => {
                 write!(f, "nativefn<{}, {:?}>", func.identifier, func.arg_count)
             }

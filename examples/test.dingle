@@ -1,3 +1,10 @@
-{
-    'a' + 2;
+fn foo(name) {
+    print(name, ' is', ' a', ' doodle lover', ' named ', name);
 }
+
+foo('Sam');
+
+let bar = |t| {
+    print('Bar: ', t);
+};
+bar('Poop');

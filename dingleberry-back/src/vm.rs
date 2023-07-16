@@ -117,9 +117,10 @@ impl VM {
         let maybe_function = maybe_function.upgrade().unwrap();
 
         let (identifier, param_count) = match &*maybe_function.data.borrow() {
-            ObjectData::Function(function) => {
-                (function.identifier.clone(), Some(function.arg_count))
-            }
+            ObjectData::Function(function) => (
+                function.identifier.clone().unwrap_or("Anonymous".into()),
+                Some(function.arg_count),
+            ),
             ObjectData::NativeFunction(function) => {
                 (function.identifier.to_string(), function.arg_count)
             }
@@ -135,7 +136,7 @@ impl VM {
         if param_count.is_some() && arg_count != param_count.unwrap() as usize {
             return Err(SpruceErr::new(
                 format!(
-                    "Function '{}' expected {} arguments but received {}",
+                    "Function '{}' expected {} argument(s) but received {}",
                     identifier,
                     param_count.unwrap(),
                     arg_count

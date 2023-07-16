@@ -685,11 +685,15 @@ impl Parser {
             // Consume paarameter list
             // TODO: Underscore to add unnamed parameter
             if self.current.kind != right {
-                parameters.push(self.consume_parameter()?);
-
-                while self.current.kind == TokenKind::Comma {
+                if self.current.kind == TokenKind::UnderscoreUnderscore {
                     self.consume_here();
+                } else {
                     parameters.push(self.consume_parameter()?);
+
+                    while self.current.kind == TokenKind::Comma {
+                        self.consume_here();
+                        parameters.push(self.consume_parameter()?);
+                    }
                 }
             }
 

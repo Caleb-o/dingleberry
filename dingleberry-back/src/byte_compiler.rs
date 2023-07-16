@@ -13,7 +13,7 @@ use crate::{bytecode::ByteCode, object::ObjectData, value::Value, vm::VM};
 
 #[derive(Debug, Clone)]
 pub struct Function {
-    pub identifier: String,
+    pub identifier: Option<String>,
     pub arg_count: u8,
     pub code: Vec<ByteCode>,
 }
@@ -25,7 +25,7 @@ impl PartialEq for Function {
 }
 
 impl Function {
-    fn new(identifier: String, arg_count: u8) -> Rc<Self> {
+    fn new(identifier: Option<String>, arg_count: u8) -> Rc<Self> {
         Rc::new(Self {
             identifier,
             arg_count,
@@ -141,7 +141,7 @@ pub struct ByteCompiler<'a> {
 impl<'a> ByteCompiler<'a> {
     pub fn new(vm: &'a mut VM) -> Self {
         Self {
-            current_func: Some(Function::new("script".into(), 0)),
+            current_func: Some(Function::new(Some("script".into()), 0)),
             symbol_table: SymbolTable::new(),
             vm,
         }
@@ -190,16 +190,30 @@ impl<'a> ByteCompiler<'a> {
         }
     }
 
-    fn close_function(&mut self) -> usize {
+    #[inline]
+    fn open_function(&mut self, identifier: Option<String>, arg_count: u8) {
+        self.current_func = Some(Function::new(identifier, arg_count));
+        self.symbol_table.new_scope();
+    }
+
+    fn close_function(&mut self, anonymous: bool, last_fn: Option<Rc<Function>>) -> Option<u8> {
+        self.symbol_table.close_scope();
+
         self.func().code.extend([ByteCode::None, ByteCode::Return]);
 
         let func = self.current_func.take().unwrap();
-        let identifier = func.identifier.clone();
+        self.current_func = last_fn;
 
-        let obj = self.vm.allocate(ObjectData::Function(func));
-        self.vm.globals.insert(identifier, Value::Object(obj));
-
-        self.vm.globals.len()
+        if anonymous {
+            let obj = self.vm.allocate(ObjectData::Function(func));
+            self.vm.constants.push(Value::Object(obj));
+            Some((self.vm.constants.len() - 1) as u8)
+        } else {
+            let identifier = func.identifier.as_ref().unwrap().clone();
+            let obj = self.vm.allocate(ObjectData::Function(func));
+            self.vm.globals.insert(identifier, Value::Object(obj));
+            None
+        }
     }
 
     #[inline]
@@ -215,6 +229,7 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
             &AstData::Empty => self.visit_empty(item),
             &AstData::VarDeclarations(_) => self.visit_var_declarations(item),
             &AstData::VarDeclaration { .. } => self.visit_var_declaration(item),
+            &AstData::Function { .. } => self.visit_function(item),
             &AstData::BinaryOp { .. } => self.visit_binary_op(item),
             &AstData::UnaryOp { .. } => self.visit_unary_op(item),
             &AstData::FunctionCall { .. } => self.visit_function_call(item),
@@ -337,7 +352,12 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
     }
 
     fn visit_parameter(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        todo!()
+        let AstData::Parameter = &item.data else { unreachable!() };
+
+        let param = item.token.lexeme.as_ref().unwrap().get_slice().to_string();
+        _ = self.symbol_table.add_symbol(param, false)?;
+
+        Ok(())
     }
 
     fn visit_parameter_list(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
@@ -345,7 +365,36 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
     }
 
     fn visit_function(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        todo!()
+        let AstData::Function { anonymous, parameters, body } = &item.data else { unreachable!() };
+
+        let last_function = self.current_func.take();
+
+        let identifier = if item.token.lexeme.is_some() {
+            Some(item.token.lexeme.as_ref().unwrap().get_slice().to_string())
+        } else {
+            None
+        };
+        self.open_function(
+            identifier,
+            parameters
+                .as_ref()
+                .map(|p| p.len() as u8)
+                .unwrap_or_default(),
+        );
+
+        if let Some(parameters) = parameters {
+            for param in parameters {
+                self.visit_parameter(param)?;
+            }
+        }
+
+        self.visit(body)?;
+
+        if let Some(index) = self.close_function(*anonymous, last_function) {
+            self.func().code.push(ByteCode::ConstantByte(index));
+        }
+
+        Ok(())
     }
 
     fn visit_function_call(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
