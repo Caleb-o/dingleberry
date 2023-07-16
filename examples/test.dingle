@@ -1,10 +1,5 @@
-fn foo(name) {
-    print(name, ' is', ' a', ' doodle lover', ' named ', name);
+fn hello_world(name) {
+    print('Hello, ', 'World! Hello, ', name);
 }
 
-foo('Sam');
-
-let bar = |t| {
-    print('Bar: ', t);
-};
-bar('Poop');
+hello_world('Bob');

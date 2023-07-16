@@ -52,7 +52,7 @@ impl Lexer {
             '<' => self.make_char_token_matches(TokenKind::Less, '=', TokenKind::LessEqual),
             '!' => self.make_char_token_matches(TokenKind::Bang, '=', TokenKind::NotEqual),
 
-            '|' => self.make_char_token_matches(TokenKind::Pipe, '|', TokenKind::Or),
+            '|' => self.make_char_token_matches(TokenKind::Error, '|', TokenKind::Or),
             '&' => self.make_char_token_matches(TokenKind::Error, '&', TokenKind::And),
 
             '(' => self.make_char_token(TokenKind::LParen),

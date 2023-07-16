@@ -26,7 +26,6 @@ pub enum TokenKind {
     Colon,
     Comma,
     Dot,
-    Pipe,
 
     LParen,
     RParen,

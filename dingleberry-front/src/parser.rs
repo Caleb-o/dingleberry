@@ -137,7 +137,7 @@ impl Parser {
                 Ok(identifier)
             }
 
-            TokenKind::Pipe => self.anon_function(),
+            TokenKind::Function => self.anon_function(),
             TokenKind::Colon => self.struct_literal(),
 
             _ => Err(self.error(format!(
@@ -721,8 +721,9 @@ impl Parser {
 
     fn anon_function(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let token = self.get_current();
-        let parameters = self.collect_params(TokenKind::Pipe, TokenKind::Pipe)?;
+        self.consume_here();
 
+        let parameters = self.collect_params(TokenKind::LParen, TokenKind::RParen)?;
         let body = self.collect_body()?;
 
         Ok(Ast::new_function(token, true, parameters, body))
