@@ -9,11 +9,7 @@ use dingleberry_shared::{
     visitor::Visitor,
 };
 
-use crate::{
-    bytecode::ByteCode,
-    gc::{ObjectData, Value},
-    vm::VM,
-};
+use crate::{bytecode::ByteCode, object::ObjectData, value::Value, vm::VM};
 
 #[derive(Debug, Clone)]
 pub struct Function {

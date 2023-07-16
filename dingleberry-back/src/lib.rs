@@ -1,9 +1,13 @@
-use gc::{ObjectData, Value};
+use object::ObjectData;
+use value::Value;
 use vm::VM;
 
 pub mod byte_compiler;
 pub mod bytecode;
 pub mod gc;
+pub mod nativefunction;
+pub mod object;
+pub mod value;
 pub mod vm;
 
 fn nt_print(_: &mut VM, args: &[Value]) -> Value {

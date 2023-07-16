@@ -9,7 +9,10 @@ use dingleberry_shared::error::{SpruceErr, SpruceErrData};
 use crate::{
     byte_compiler::Function,
     bytecode::ByteCode,
-    gc::{GarbageCollector, NativeFn, NativeFunction, Object, ObjectData, Roots, Value},
+    gc::{GarbageCollector, Roots},
+    nativefunction::{NativeFn, NativeFunction},
+    object::{Object, ObjectData},
+    value::Value,
 };
 
 const RUNTIME_INTERNING: bool = false;
