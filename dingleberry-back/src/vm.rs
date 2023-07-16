@@ -12,6 +12,8 @@ use crate::{
     gc::{GarbageCollector, NativeFn, NativeFunction, Object, ObjectData, Roots, Value},
 };
 
+const RUNTIME_INTERNING: bool = false;
+
 struct CallFrame {
     pub ip: usize,
     pub identifier: String,
@@ -68,16 +70,23 @@ impl VM {
         )
     }
 
-    pub fn allocate_string(&mut self, data: String) -> Weak<Object> {
+    pub fn allocate_string(&mut self, data: String, intern: bool) -> Weak<Object> {
+        if !intern {
+            return self.allocate(ObjectData::Str(data));
+        }
+
         let mut hasher = DefaultHasher::new();
         data.hash(&mut hasher);
         let hash = hasher.finish() as u32;
 
         if let Some(object) = self.interned_strings.get(&hash) {
-            return Rc::downgrade(&object);
+            Rc::downgrade(&object)
+        } else {
+            let obj = self.allocate(ObjectData::Str(data));
+            self.interned_strings
+                .insert(hash, obj.clone().upgrade().unwrap());
+            obj
         }
-
-        self.allocate(ObjectData::Str(data))
     }
 
     #[inline]
@@ -343,7 +352,7 @@ impl VM {
 
         match op {
             ByteCode::Add => {
-                let obj = self.allocate(ObjectData::Str(format!("{lstr}{rstr}")));
+                let obj = self.allocate_string(format!("{lstr}{rstr}"), RUNTIME_INTERNING);
                 self.stack.push(Value::Object(obj));
             }
 

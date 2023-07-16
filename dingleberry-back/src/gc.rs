@@ -346,12 +346,12 @@ mod tests {
     fn simple_collection() {
         let mut vm = VM::new();
 
-        let value = Value::Object(vm.allocate_string("Goodbye".into()));
+        let value = Value::Object(vm.allocate_string("Goodbye".into(), true));
         vm.push(value);
 
         {
             // Allocate objects
-            let obj2 = vm.allocate_string("Hello".into());
+            let obj2 = vm.allocate_string("Hello".into(), true);
 
             obj2.upgrade().as_mut().map(|obj2| {
                 // Modify mutable state within objects

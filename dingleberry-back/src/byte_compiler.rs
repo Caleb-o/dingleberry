@@ -223,7 +223,7 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
             let slice = item.token.lexeme.as_ref().unwrap().get_slice();
             // Remove quotes
             let string = slice[1..slice.len() - 1].to_string();
-            Value::Object(self.vm.allocate_string(string))
+            Value::Object(self.vm.allocate_string(string, true))
         } else {
             item.token.clone().into()
         };
