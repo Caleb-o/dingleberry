@@ -28,7 +28,6 @@ pub struct VM {
     pub globals: HashMap<String, Value>,
     pub interned_strings: HashMap<u32, Rc<Object>>,
 
-    ip: usize,
     call_stack: Vec<CallFrame>,
     running: bool,
 }
@@ -42,7 +41,6 @@ impl VM {
             globals: HashMap::new(),
             interned_strings: HashMap::with_capacity(8),
 
-            ip: 0,
             call_stack: Vec::new(),
             running: true,
         }
@@ -80,7 +78,7 @@ impl VM {
         let hash = hasher.finish() as u32;
 
         if let Some(object) = self.interned_strings.get(&hash) {
-            Rc::downgrade(&object)
+            Rc::downgrade(object)
         } else {
             let obj = self.allocate(ObjectData::Str(data));
             self.interned_strings
@@ -95,7 +93,7 @@ impl VM {
             stack: &self.stack,
             globals: &self.globals,
             interned_strings: &self.interned_strings,
-        })
+        });
     }
 
     #[inline]
@@ -158,7 +156,6 @@ impl VM {
             return Ok(());
         }
 
-        self.ip = 0;
         self.call_stack.push(CallFrame {
             ip: 0,
             identifier: identifier.clone(),
@@ -169,11 +166,34 @@ impl VM {
         Ok(())
     }
 
-    pub fn run(&mut self) -> Result<(), SpruceErr> {
+    pub fn start(&mut self) {
         self.register_functions();
 
         println!("Code {:?}", self.get_function().code);
 
+        if let Err(e) = self.run() {
+            println!("{e}");
+            self.dump_stack_trace();
+        }
+    }
+
+    fn dump_stack_trace(&self) {
+        for (idx, frame) in self.call_stack.iter().rev().enumerate() {
+            print!("[{idx}] ");
+            match &*frame.function.data.borrow() {
+                ObjectData::Function(func) => {
+                    println!(
+                        "{}({})",
+                        frame.identifier,
+                        if func.arg_count > 0 { "..." } else { "" }
+                    );
+                }
+                _ => unreachable!(),
+            }
+        }
+    }
+
+    fn run(&mut self) -> Result<(), SpruceErr> {
         while self.running {
             let instruction = self.get_next_inst();
             match instruction {
@@ -182,6 +202,7 @@ impl VM {
                 }
 
                 ByteCode::Pop => _ = self.stack.pop(),
+                ByteCode::PopN(count) => _ = self.stack.drain(self.stack.len() - count as usize..),
 
                 ByteCode::Add | ByteCode::Sub | ByteCode::Mul | ByteCode::Div => {
                     let (lhs, rhs) = self.maybe_get_top_two()?;
@@ -245,6 +266,8 @@ impl VM {
                         }
                     }
                 }
+
+                ByteCode::Jump(index) => self.set_current_ip(index as usize),
 
                 ByteCode::IntoList(count) => {
                     let start = self.func_stack_start();
@@ -407,6 +430,11 @@ impl VM {
     #[inline]
     fn func_stack_start(&self) -> usize {
         self.call_stack.last().unwrap().stack_start
+    }
+
+    #[inline]
+    fn set_current_ip(&mut self, ip: usize) {
+        self.call_stack.last_mut().unwrap().ip = ip;
     }
 
     #[inline]

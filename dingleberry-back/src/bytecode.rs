@@ -1,7 +1,6 @@
 #[derive(Debug, Clone, Copy)]
 pub enum ByteCode {
     ConstantByte(u8),
-
     Pop,
     PopN(u8),
 
@@ -20,10 +19,12 @@ pub enum ByteCode {
     Jump(u16),
     JumpNot(u16),
 
-    None,
-
     Call(u8),
     Return,
 
+    None,
     IntoList(u8),
+
+    CheckIterObj(u16),
+    MakeIterObj,
 }

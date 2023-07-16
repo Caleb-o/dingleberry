@@ -66,8 +66,7 @@ pub enum AstData {
 
     ForStatement {
         variable: Option<Box<Ast>>,
-        condition: Box<Ast>,
-        increment: Option<Box<Ast>>,
+        expression: Option<Box<Ast>>,
         body: Box<Ast>,
     },
 
@@ -284,16 +283,14 @@ impl Ast {
     pub fn new_for_statement(
         token: Token,
         variable: Option<Box<Ast>>,
-        condition: Box<Ast>,
-        increment: Option<Box<Ast>>,
+        expression: Option<Box<Ast>>,
         body: Box<Ast>,
     ) -> Box<Self> {
         Box::new(Self {
             token,
             data: AstData::ForStatement {
                 variable,
-                condition,
-                increment,
+                expression,
                 body,
             },
         })

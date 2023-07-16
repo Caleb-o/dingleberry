@@ -1,11 +1,3 @@
-let mut a = [10, 20, 30];
-print(a);
-print(len(a));
-print('Hello' + ', World!');
-print(len('Hello' + 'Goodbye'));
-     
 {
-    let b = 20;
-    let c = 30;
-    print(b * b + c);
+    'a' + 2;
 }

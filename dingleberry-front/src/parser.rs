@@ -460,7 +460,7 @@ impl Parser {
         ))
     }
 
-    fn single_statement_block(&mut self) -> Result<Box<Ast>, SpruceErr> {
+    fn maybe_single_statement_block(&mut self) -> Result<Box<Ast>, SpruceErr> {
         match self.current.kind {
             TokenKind::If => self.if_expression_statement(false),
             TokenKind::For => self.for_statement(),
@@ -473,7 +473,7 @@ impl Parser {
         self.consume_here();
 
         let condition = self.expression()?;
-        let true_body = self.single_statement_block()?;
+        let true_body = self.maybe_single_statement_block()?;
         let mut false_body = None;
 
         if self.current.kind == TokenKind::Else {
@@ -493,35 +493,36 @@ impl Parser {
         ))
     }
 
+    fn get_identifier(&mut self) -> Result<Box<Ast>, SpruceErr> {
+        let token = self.get_current();
+        self.consume(TokenKind::Identifier, "Expected identifier")?;
+
+        Ok(Ast::new_identifier(token))
+    }
+
     fn for_statement(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let token = self.get_current();
         self.consume_here();
 
-        let mut variable = None;
+        let variable = if self.current.kind == TokenKind::UnderscoreUnderscore {
+            self.consume_here();
+            None
+        } else {
+            Some(self.let_declaration()?)
+        };
 
-        if self.current.kind == TokenKind::Let {
-            variable = Some(self.let_declaration()?);
-            self.consume(
-                TokenKind::SemiColon,
-                "Expect ';' after binding declarion in for",
-            )?;
-        }
-
-        // Evaluate condition
-        let condition = self.expression()?;
-        let mut increment = None;
-
-        if self.current.kind == TokenKind::SemiColon {
-            self.consume(TokenKind::SemiColon, "Expect ';' after for condition")?;
-            increment = Some(self.expression()?);
-        }
+        let expr = if self.current.kind == TokenKind::In {
+            self.consume_here();
+            Some(self.expression()?)
+        } else {
+            None
+        };
 
         Ok(Ast::new_for_statement(
             token,
             variable,
-            condition,
-            increment,
-            self.single_statement_block()?,
+            expr,
+            self.maybe_single_statement_block()?,
         ))
     }
 
@@ -637,8 +638,8 @@ impl Parser {
             | AstData::SwitchStatement { .. }
             | AstData::Function { .. }
             | AstData::IfStatement { .. }
-            | AstData::ForStatement { .. }
-            | _ => self.consume(TokenKind::SemiColon, "Expect ';' after statement")?,
+            | AstData::ForStatement { .. } => {}
+            _ => self.consume(TokenKind::SemiColon, "Expect ';' after statement")?,
         }
 
         Ok(node)
@@ -829,10 +830,7 @@ impl Parser {
         };
 
         let identifier = self.get_current();
-        self.consume(
-            TokenKind::Identifier,
-            "Expected identifier after 'var'/'val'",
-        )?;
+        self.consume(TokenKind::Identifier, "Expected identifier after 'let'")?;
 
         // Produce the expression
         let mut expr = None;

@@ -1,7 +1,4 @@
-use std::{
-    collections::HashMap,
-    rc::{Rc, Weak},
-};
+use std::{collections::HashMap, rc::Rc};
 
 use dingleberry_front::{
     ast::{Ast, AstData},
@@ -14,7 +11,7 @@ use dingleberry_shared::{
 
 use crate::{
     bytecode::ByteCode,
-    gc::{Object, ObjectData, Value},
+    gc::{ObjectData, Value},
     vm::VM,
 };
 
@@ -60,6 +57,11 @@ impl SymbolTable {
     #[inline]
     fn new_scope(&mut self) {
         self.scope.push(HashMap::new());
+    }
+
+    #[inline]
+    fn current_locals(&self) -> u8 {
+        self.scope.last().unwrap().len() as u8
     }
 
     #[inline]
@@ -220,6 +222,7 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
             &AstData::BinaryOp { .. } => self.visit_binary_op(item),
             &AstData::UnaryOp { .. } => self.visit_unary_op(item),
             &AstData::FunctionCall { .. } => self.visit_function_call(item),
+            &AstData::ForStatement { .. } => self.visit_for_statement(item),
             &AstData::Body(_) => self.visit_body(item, true),
             &AstData::Identifier => self.visit_identifier(item),
             &AstData::Literal => self.visit_literal(item),
@@ -428,7 +431,18 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
     }
 
     fn visit_for_statement(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        todo!()
+        let AstData::ForStatement { variable, expression, body } = &item.data else { unreachable!() };
+
+        // Infinite loop
+        if variable.is_none() && expression.is_none() {
+            let here = self.func().code.len() as u16;
+            self.visit(body)?;
+            self.func().code.push(ByteCode::Jump(here));
+        } else {
+            todo!()
+        }
+
+        Ok(())
     }
 
     fn visit_index_getter(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
@@ -469,6 +483,9 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
         for stmt in statements {
             self.visit(stmt)?;
         }
+
+        let locals = self.symbol_table.current_locals();
+        self.func().code.push(ByteCode::PopN(locals));
 
         if new_scope {
             self.symbol_table.close_scope();

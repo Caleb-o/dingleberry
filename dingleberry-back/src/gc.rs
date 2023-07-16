@@ -57,12 +57,23 @@ impl PartialEq for NativeFunction {
 }
 
 /// These are values that live on the stack
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum Value {
     None,
     Number(f32),
     Boolean(bool),
     Object(Weak<Object>),
+}
+
+impl Debug for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::None => write!(f, "None"),
+            Self::Number(_) => write!(f, "Number"),
+            Self::Boolean(_) => write!(f, "Boolean"),
+            Self::Object(o) => write!(f, "Object:{:?}", o.upgrade().unwrap().data.borrow()),
+        }
+    }
 }
 
 impl Display for Value {
@@ -109,12 +120,23 @@ impl PartialEq for Value {
 }
 
 /// Data that lives inside of an object, like heaped values
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum ObjectData {
     Str(String),
     List(Vec<Value>),
     Function(Rc<Function>),
     NativeFunction(NativeFunction),
+}
+
+impl Debug for ObjectData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Str(_) => write!(f, "String"),
+            Self::List(_) => write!(f, "List"),
+            Self::Function(_) => write!(f, "Function"),
+            Self::NativeFunction(_) => write!(f, "NativeFunction"),
+        }
+    }
 }
 
 impl Display for Object {
@@ -149,11 +171,17 @@ impl Display for ObjectData {
 }
 
 /// Objects are values that live in the heap
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
 pub struct Object {
     // Mutable state within the object
     pub data: RefCell<ObjectData>,
     pub marked: Cell<bool>,
+}
+
+impl Debug for Object {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.data)
+    }
 }
 
 /// Generation contains objects
@@ -179,7 +207,7 @@ impl Generation {
                 println!(
                     "Deallocating object with data: {:?} {}",
                     obj.data,
-                    Rc::strong_count(&obj),
+                    Rc::weak_count(&obj),
                 );
             }
 
@@ -237,7 +265,7 @@ impl GarbageCollector {
 
     pub fn allocate<'a>(&mut self, data: ObjectData, roots: Roots<'a>) -> Weak<Object> {
         let to_alloc_bytes = match &data {
-            ObjectData::Str(_) => std::mem::size_of::<String>(),
+            ObjectData::Str(s) => std::mem::size_of::<String>() + s.as_bytes().len(),
             ObjectData::List(values) => std::mem::size_of::<Value>() * values.capacity(),
             ObjectData::Function(_) => std::mem::size_of::<Function>(),
             ObjectData::NativeFunction(_) => std::mem::size_of::<NativeFunction>(),
@@ -254,7 +282,7 @@ impl GarbageCollector {
 
         // Check for next collection
         if self.bytes_allocated >= self.next_sweep {
-            self.collect_garbage(roots);
+            _ = self.collect_garbage(roots);
         }
 
         let obj = Rc::new(Object {
@@ -302,7 +330,6 @@ impl GarbageCollector {
         self.next_sweep *= SWEEP_FACTOR;
     }
 
-    #[allow(irrefutable_let_patterns)]
     fn mark_roots<'a>(&mut self, roots: Roots<'a>) {
         for item in roots.stack {
             if let Value::Object(obj) = item {
@@ -325,6 +352,7 @@ impl GarbageCollector {
         }
     }
 
+    /// Returns if it swept old generation
     #[inline]
     pub fn collect_garbage<'a>(&mut self, roots: Roots<'a>) {
         if cfg!(Debug) {
@@ -351,14 +379,14 @@ mod tests {
 
         {
             // Allocate objects
-            let obj2 = vm.allocate_string("Hello".into(), true);
+            let obj2 = vm.allocate_string("Hello".into(), false);
 
             obj2.upgrade().as_mut().map(|obj2| {
                 // Modify mutable state within objects
                 *obj2.data.borrow_mut() = ObjectData::Str("Hello, World!".into());
             });
 
-            // Obj2 is not on in the roots, so it is not reachable by the GC
+            // Obj2 is not on in the roots as it's not interned, so it is not reachable by the GC
             vm.collect();
         }
 

@@ -165,7 +165,11 @@ impl Lexer {
             'i' => self.check_if_matches(
                 start,
                 len,
-                &[("f", TokenKind::If), ("nclude", TokenKind::Include)],
+                &[
+                    ("f", TokenKind::If),
+                    ("n", TokenKind::In),
+                    ("nclude", TokenKind::Include),
+                ],
             ),
             'n' => self.check_if_matches(start, len, &[("one", TokenKind::None)]),
             'o' => self.check_if_matches(start, len, &[("r", TokenKind::Or)]),
@@ -175,6 +179,8 @@ impl Lexer {
             'm' => self.check_if_matches(start, len, &[("ut", TokenKind::Mutable)]),
             't' => self.check_if_matches(start, len, &[("rue", TokenKind::True)]),
             'w' => self.check_if_matches(start, len, &[("hile", TokenKind::While)]),
+
+            '_' => self.check_if_matches(start, len, &[("_", TokenKind::UnderscoreUnderscore)]),
             _ => TokenKind::Identifier,
         }
     }

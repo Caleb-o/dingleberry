@@ -43,6 +43,7 @@ pub enum TokenKind {
     None,
 
     If,
+    In,
     Else,
     For,
     While,
@@ -55,6 +56,7 @@ pub enum TokenKind {
     Or,
     Let,
     Mutable,
+    UnderscoreUnderscore,
 
     EndOfFile,
     Error,

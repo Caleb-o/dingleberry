@@ -1,6 +1,6 @@
 use std::{env, fs, path::Path, rc::Rc};
 
-use dingleberry_back::{byte_compiler::ByteCompiler, gc::Value, vm::VM};
+use dingleberry_back::{byte_compiler::ByteCompiler, vm::VM};
 use dingleberry_front::{parser::Parser, source::Source};
 
 fn main() {
@@ -39,10 +39,9 @@ fn main() {
 
     if let Err(e) = vm.call(maybe_func.unwrap(), 0) {
         println!("Error: {e}");
+        return;
     }
 
-    if let Err(e) = vm.run() {
-        println!("{e}");
-    }
+    vm.start();
     println!("Stack {:?}", vm.stack);
 }
