@@ -2,6 +2,7 @@ use std::{collections::HashMap, rc::Rc};
 
 use dingleberry_front::{
     ast::{Ast, AstData},
+    source::Source,
     token::TokenKind,
 };
 use dingleberry_shared::{
@@ -10,6 +11,12 @@ use dingleberry_shared::{
 };
 
 use crate::{bytecode::ByteCode, object::ObjectData, value::Value, vm::VM};
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Context {
+    None,
+    Function,
+}
 
 #[derive(Debug, Clone)]
 pub struct Function {
@@ -105,14 +112,14 @@ impl SymbolTable {
         if top_scope.contains_key(&identifier) {
             return Err(SpruceErr::new(
                 format!("Symbol with name '{identifier}' already exists in scope"),
-                SpruceErrData::Compiler,
+                SpruceErrData::Analyser,
             ));
         }
 
         if top_scope.len() >= u8::MAX as usize {
             return Err(SpruceErr::new(
                 format!("Too many symbols in current scope"),
-                SpruceErrData::Compiler,
+                SpruceErrData::Analyser,
             ));
         }
 
@@ -135,6 +142,7 @@ impl SymbolTable {
 pub struct ByteCompiler<'a> {
     current_func: Option<Rc<Function>>,
     symbol_table: SymbolTable,
+    ctx: Context,
     vm: &'a mut VM,
 }
 
@@ -143,6 +151,7 @@ impl<'a> ByteCompiler<'a> {
         Self {
             current_func: Some(Function::new(Some("script".into()), 0)),
             symbol_table: SymbolTable::new(),
+            ctx: Context::None,
             vm,
         }
     }
@@ -234,6 +243,8 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
             &AstData::UnaryOp { .. } => self.visit_unary_op(item),
             &AstData::FunctionCall { .. } => self.visit_function_call(item),
             &AstData::ForStatement { .. } => self.visit_for_statement(item),
+            &AstData::IndexGetter { .. } => self.visit_index_getter(item),
+            &AstData::IndexSetter { .. } => self.visit_index_setter(item),
             &AstData::Body(_) => self.visit_body(item, true),
             &AstData::Return(_) => self.visit_return_statement(item),
             &AstData::Identifier => self.visit_identifier(item),
@@ -304,9 +315,19 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
         }
 
         if values.len() > u8::MAX as usize {
+            let file_path = item
+                .token
+                .lexeme
+                .as_ref()
+                .map(|span| (*span.source.file_path).clone());
+
             return Err(SpruceErr::new(
                 "More than 256 values in array literal".to_string(),
-                SpruceErrData::Compiler,
+                SpruceErrData::Compiler {
+                    file_path,
+                    line: item.token.line,
+                    column: item.token.column,
+                },
             ));
         }
 
@@ -361,12 +382,11 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
         Ok(())
     }
 
-    fn visit_parameter_list(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        todo!()
-    }
-
     fn visit_function(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
         let AstData::Function { anonymous, parameters, body } = &item.data else { unreachable!() };
+
+        let last_ctx = self.ctx;
+        self.ctx = Context::Function;
 
         let last_function = self.current_func.take();
 
@@ -395,6 +415,7 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
             self.func().code.push(ByteCode::ConstantByte(index));
         }
 
+        self.ctx = last_ctx;
         Ok(())
     }
 
@@ -408,9 +429,19 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
         self.visit(lhs)?;
 
         if arguments.len() > u8::MAX as usize {
+            let file_path = item
+                .token
+                .lexeme
+                .as_ref()
+                .map(|span| (*span.source.file_path).clone());
+
             return Err(SpruceErr::new(
                 "More than 256 arguments in function call".to_string(),
-                SpruceErrData::Compiler,
+                SpruceErrData::Compiler {
+                    file_path,
+                    line: item.token.line,
+                    column: item.token.column,
+                },
             ));
         }
 
@@ -492,11 +523,27 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
     }
 
     fn visit_index_getter(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        todo!()
+        let AstData::IndexGetter { expression, index } = &item.data else { unreachable!() };
+
+        self.visit(expression)?;
+        self.visit(index)?;
+
+        self.func().code.push(ByteCode::IndexGet);
+
+        Ok(())
     }
 
     fn visit_index_setter(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        todo!()
+        let AstData::IndexSetter { expression, rhs } = &item.data else { unreachable!() };
+        let AstData::IndexGetter { expression, index } = &expression.data else { unreachable!() };
+
+        self.visit(expression)?;
+        self.visit(index)?;
+        self.visit(rhs)?;
+
+        self.func().code.push(ByteCode::IndexSet);
+
+        Ok(())
     }
 
     fn visit_property_getter(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
@@ -523,6 +570,23 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
         }
 
         self.func().code.push(ByteCode::Return);
+
+        if self.ctx != Context::Function {
+            let file_path = item
+                .token
+                .lexeme
+                .as_ref()
+                .map(|span| (*span.source.file_path).clone());
+
+            return Err(SpruceErr::new(
+                "Cannot return outside function".into(),
+                SpruceErrData::Compiler {
+                    file_path,
+                    line: item.token.line,
+                    column: item.token.column,
+                },
+            ));
+        }
 
         Ok(())
     }

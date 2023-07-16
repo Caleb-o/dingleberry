@@ -16,6 +16,9 @@ pub enum ByteCode {
     GetGlobal(u8),
     SetGlobal(u8),
 
+    IndexGet,
+    IndexSet,
+
     Jump(u16),
     JumpNot(u16),
 

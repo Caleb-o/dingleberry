@@ -8,10 +8,12 @@ pub enum SpruceErrData {
         line: u32,
         column: u16,
     },
-    Analyser {
-        file_path: String,
+    Analyser,
+    Compiler {
+        file_path: Option<String>,
+        line: u32,
+        column: u16,
     },
-    Compiler,
     VM,
 }
 
@@ -46,7 +48,17 @@ impl Display for SpruceErr {
                 line,
                 column,
             } => write!(f, "'{}' [{}:{}]", file_path, line, column)?,
-            SpruceErrData::Analyser { ref file_path } => write!(f, "'{file_path}'")?,
+            SpruceErrData::Compiler {
+                ref file_path,
+                line,
+                column,
+            } => {
+                if let Some(file_path) = file_path {
+                    write!(f, "'{file_path}' [{line}:{column}]")?
+                } else {
+                    write!(f, "[{line}:{column}]")?
+                }
+            }
             _ => {}
         }
 

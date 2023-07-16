@@ -173,8 +173,6 @@ impl VM {
     pub fn start(&mut self) {
         self.register_functions();
 
-        println!("Code {:?}", self.get_function().code);
-
         if let Err(e) = self.run() {
             println!("{e}");
             self.dump_stack_trace();
@@ -269,6 +267,21 @@ impl VM {
                             ));
                         }
                     }
+                }
+
+                ByteCode::IndexGet => {
+                    let index_expr = self.pop();
+                    let item = self.pop();
+
+                    self.index_item(item, index_expr)?;
+                }
+
+                ByteCode::IndexSet => {
+                    let value = self.pop();
+                    let index_expr = self.pop();
+                    let index_item = self.pop();
+
+                    self.index_item_set(index_item, index_expr, value)?;
                 }
 
                 ByteCode::Jump(index) => self.set_current_ip(index as usize),
@@ -374,6 +387,100 @@ impl VM {
         }
 
         Ok((lhs, rhs))
+    }
+
+    fn index_item(&mut self, item: Value, value: Value) -> Result<(), SpruceErr> {
+        if let Value::Object(obj) = &item {
+            let index = if let Value::Number(n) = value {
+                n as usize
+            } else {
+                return Err(SpruceErr::new(
+                    format!("Cannot index with non-number '{value}'"),
+                    SpruceErrData::VM,
+                ));
+            };
+
+            let obj = obj.upgrade().unwrap();
+            let data = obj.data.borrow();
+
+            match &*data {
+                &ObjectData::Str(ref s) => {
+                    let value = if index >= s.len() {
+                        Value::None
+                    } else {
+                        let str = self
+                            .allocate_string(format!("{}", s.chars().nth(index).unwrap()), false);
+                        Value::Object(str)
+                    };
+                    self.stack.push(value);
+                }
+                &ObjectData::List(ref values) => {
+                    let value = if index >= values.len() {
+                        Value::None
+                    } else {
+                        values[index].clone()
+                    };
+                    self.push(value);
+                }
+
+                _ => {
+                    return Err(SpruceErr::new(
+                        format!("Cannot index into item '{item}'"),
+                        SpruceErrData::VM,
+                    ))
+                }
+            }
+        } else {
+            return Err(SpruceErr::new(
+                format!("Cannot index into item '{item}'"),
+                SpruceErrData::VM,
+            ));
+        }
+
+        Ok(())
+    }
+
+    fn index_item_set(
+        &mut self,
+        index_item: Value,
+        index_expr: Value,
+        value: Value,
+    ) -> Result<(), SpruceErr> {
+        if let Value::Object(obj) = &index_item {
+            let index = if let Value::Number(n) = index_expr {
+                n as usize
+            } else {
+                return Err(SpruceErr::new(
+                    format!("Cannot index with non-number '{value}'"),
+                    SpruceErrData::VM,
+                ));
+            };
+
+            let obj = obj.upgrade().unwrap();
+            let mut data = obj.data.borrow_mut();
+
+            match &mut *data {
+                &mut ObjectData::List(ref mut values) => {
+                    if index < values.len() {
+                        values[index] = value;
+                    }
+                }
+
+                _ => {
+                    return Err(SpruceErr::new(
+                        format!("Cannot index into item '{index_item}'"),
+                        SpruceErrData::VM,
+                    ))
+                }
+            }
+        } else {
+            return Err(SpruceErr::new(
+                format!("Cannot index into item '{index_item}'"),
+                SpruceErrData::VM,
+            ));
+        }
+
+        Ok(())
     }
 
     fn binary_op_numbers(&mut self, op: ByteCode, lhs: Value, rhs: Value) -> Result<(), SpruceErr> {
