@@ -95,6 +95,7 @@ impl GarbageCollector {
         let to_alloc_bytes = match &data {
             ObjectData::Str(s) => std::mem::size_of::<String>() + s.as_bytes().len(),
             ObjectData::List(values) => std::mem::size_of::<Value>() * values.capacity(),
+            ObjectData::Tuple(values) => std::mem::size_of::<Value>() * values.len(),
             ObjectData::Function(_) => std::mem::size_of::<Function>(),
             ObjectData::NativeFunction(_) => std::mem::size_of::<NativeFunction>(),
             ObjectData::Module(m) => std::mem::size_of::<Value>() * m.items.len(),
@@ -131,6 +132,15 @@ impl GarbageCollector {
         match &*root.data.borrow() {
             &ObjectData::List(ref items) => {
                 for item in items {
+                    if let Value::Object(obj) = item {
+                        self.mark(&obj.upgrade().unwrap());
+                    }
+                }
+                root.marked.set(true);
+            }
+
+            &ObjectData::Tuple(ref items) => {
+                for item in &items[0..] {
                     if let Value::Object(obj) = item {
                         self.mark(&obj.upgrade().unwrap());
                     }

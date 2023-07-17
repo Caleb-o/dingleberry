@@ -18,6 +18,7 @@ pub struct Module {
 pub enum ObjectData {
     Str(String),
     List(Vec<Value>),
+    Tuple(Box<[Value]>),
     Function(Rc<Function>),
     NativeFunction(NativeFunction),
     Module(Rc<Module>),
@@ -28,6 +29,7 @@ impl Debug for ObjectData {
         match self {
             Self::Str(_) => write!(f, "String"),
             Self::List(_) => write!(f, "List"),
+            Self::Tuple(_) => write!(f, "Tuple"),
             Self::Function(_) => write!(f, "Function"),
             Self::NativeFunction(_) => write!(f, "NativeFunction"),
             Self::Module { .. } => write!(f, "Module"),
@@ -39,6 +41,7 @@ impl Display for ObjectData {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Str(s) => write!(f, "{s}"),
+
             Self::List(values) => {
                 write!(f, "[")?;
 
@@ -51,6 +54,20 @@ impl Display for ObjectData {
                 }
 
                 write!(f, "]")
+            }
+
+            Self::Tuple(values) => {
+                write!(f, "(")?;
+
+                for (idx, value) in values.iter().enumerate() {
+                    write!(f, "{value}")?;
+
+                    if idx < values.len() - 1 {
+                        write!(f, ", ")?;
+                    }
+                }
+
+                write!(f, ")")
             }
 
             Self::Function(func) => write!(

@@ -1,9 +1,8 @@
-use std::{collections::HashMap, process::id, rc::Rc};
+use std::{collections::HashMap, rc::Rc};
 
 use dingleberry_front::{
     ast::{Ast, AstData},
-    source::Source,
-    token::TokenKind,
+    token::{Token, TokenKind},
 };
 use dingleberry_shared::{
     error::{SpruceErr, SpruceErrData},
@@ -86,17 +85,6 @@ impl SymbolTable {
         _ = self.scope.pop();
     }
 
-    fn find_local_symbol(&self, identifier: &str) -> Option<(bool, u16)> {
-        let top_scope = self.scope.last().unwrap();
-        for (id, value) in top_scope {
-            if *id == identifier {
-                return Some(*value);
-            }
-        }
-
-        None
-    }
-
     fn find_local_symbol_mut_ref(&mut self, identifier: &str) -> Option<&mut (bool, u16)> {
         let top_scope = self.scope.last_mut().unwrap();
         for (id, value) in top_scope {
@@ -120,20 +108,34 @@ impl SymbolTable {
         None
     }
 
-    fn add_symbol(&mut self, identifier: String, is_mutable: bool) -> Result<u8, SpruceErr> {
+    fn add_symbol(&mut self, token: Token, is_mutable: bool) -> Result<u8, SpruceErr> {
         let top_scope = self.scope.last_mut().unwrap();
+        let identifier = token.clone().lexeme.unwrap().get_slice().to_string();
+
+        let file_path = token
+            .lexeme
+            .as_ref()
+            .map(|span| (*span.source.file_path).clone());
 
         if top_scope.contains_key(&identifier) {
             return Err(SpruceErr::new(
                 format!("Symbol with name '{identifier}' already exists in scope"),
-                SpruceErrData::Analyser,
+                SpruceErrData::Compiler {
+                    file_path,
+                    line: token.line,
+                    column: token.column,
+                },
             ));
         }
 
         if top_scope.len() >= u8::MAX as usize {
             return Err(SpruceErr::new(
                 format!("Too many symbols in current scope"),
-                SpruceErrData::Analyser,
+                SpruceErrData::Compiler {
+                    file_path,
+                    line: token.line,
+                    column: token.column,
+                },
             ));
         }
 
@@ -219,6 +221,8 @@ impl<'a> ByteCompiler<'a> {
 
     #[inline]
     fn open_module(&mut self, identifier: String) {
+        self.symbol_table.new_scope();
+
         self.current_mod = Some(Module {
             identifier,
             items: HashMap::new(),
@@ -227,6 +231,8 @@ impl<'a> ByteCompiler<'a> {
 
     #[inline]
     fn close_module(&mut self, last_mod: Option<Module>) -> u16 {
+        self.symbol_table.close_scope();
+
         let module = self.current_mod.take().unwrap();
         let identifier = module.identifier.clone();
         self.current_mod = last_mod;
@@ -302,6 +308,7 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
             &AstData::Identifier => self.visit_identifier(item),
             &AstData::Literal => self.visit_literal(item),
             &AstData::ArrayLiteral(_) => self.visit_array_literal(item),
+            &AstData::TupleLiteral(_) => self.visit_tuple_literal(item),
             &AstData::ExpressionStatement(_, _) => self.visit_expression_statement(item),
             n => todo!("Visit {n:?}"),
         }
@@ -356,17 +363,13 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
     }
 
     fn visit_tuple_literal(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        todo!()
-    }
-
-    fn visit_array_literal(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        let AstData::ArrayLiteral(values) = &item.data else { unreachable!() };
+        let AstData::TupleLiteral(values) = &item.data else { unreachable!() };
 
         for value in values {
             self.visit(value)?;
         }
 
-        if values.len() > u8::MAX as usize {
+        if values.len() > u16::MAX as usize {
             let file_path = item
                 .token
                 .lexeme
@@ -374,7 +377,7 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
                 .map(|span| (*span.source.file_path).clone());
 
             return Err(SpruceErr::new(
-                "More than 256 values in array literal".to_string(),
+                "More than 65535 values in tuple literal".to_string(),
                 SpruceErrData::Compiler {
                     file_path,
                     line: item.token.line,
@@ -385,7 +388,38 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
 
         self.func()
             .code
-            .push(ByteCode::IntoList(values.len() as u8));
+            .push(ByteCode::IntoTuple(values.len() as u16));
+
+        Ok(())
+    }
+
+    fn visit_array_literal(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
+        let AstData::ArrayLiteral(values) = &item.data else { unreachable!() };
+
+        for value in values {
+            self.visit(value)?;
+        }
+
+        if values.len() > u16::MAX as usize {
+            let file_path = item
+                .token
+                .lexeme
+                .as_ref()
+                .map(|span| (*span.source.file_path).clone());
+
+            return Err(SpruceErr::new(
+                "More than 65535 values in array literal".to_string(),
+                SpruceErrData::Compiler {
+                    file_path,
+                    line: item.token.line,
+                    column: item.token.column,
+                },
+            ));
+        }
+
+        self.func()
+            .code
+            .push(ByteCode::IntoList(values.len() as u16));
 
         Ok(())
     }
@@ -437,8 +471,7 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
     fn visit_parameter(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
         let AstData::Parameter = &item.data else { unreachable!() };
 
-        let param = item.token.lexeme.as_ref().unwrap().get_slice().to_string();
-        _ = self.symbol_table.add_symbol(param, false)?;
+        _ = self.symbol_table.add_symbol(item.token.clone(), false)?;
 
         Ok(())
     }
@@ -452,10 +485,13 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
         let last_function = self.current_func.take();
 
         let identifier = if item.token.lexeme.is_some() {
+            _ = self.symbol_table.add_symbol(item.token.clone(), false)?;
+
             Some(item.token.lexeme.as_ref().unwrap().get_slice().to_string())
         } else {
             None
         };
+
         self.open_function(
             identifier.clone(),
             parameters
@@ -545,7 +581,7 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
         } else {
             _ = self
                 .symbol_table
-                .add_symbol(slice.to_string(), *is_mutable)?;
+                .add_symbol(item.token.clone(), *is_mutable)?;
         }
 
         Ok(())

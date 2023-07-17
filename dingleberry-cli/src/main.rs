@@ -33,7 +33,7 @@ fn main() {
 
     let maybe_func = compiler.compile(root);
     if let Err(e) = maybe_func {
-        println!("Error: {e}");
+        println!("{e}");
         return;
     }
 

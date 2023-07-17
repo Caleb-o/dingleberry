@@ -333,6 +333,14 @@ impl VM {
                     self.stack.push(Value::Object(reference));
                 }
 
+                ByteCode::IntoTuple(count) => {
+                    let start = self.func_stack_start();
+                    let moved_values = self.stack.drain(start..start + count as usize).collect();
+
+                    let reference = self.allocate(ObjectData::Tuple(moved_values));
+                    self.stack.push(Value::Object(reference));
+                }
+
                 ByteCode::Call(arg_count) => {
                     let function = self.pop();
                     self.call(function, arg_count as usize)?;
@@ -467,7 +475,17 @@ impl VM {
                     };
                     self.stack.push(value);
                 }
+
                 &ObjectData::List(ref values) => {
+                    let value = if index >= values.len() {
+                        Value::None
+                    } else {
+                        values[index].clone()
+                    };
+                    self.push(value);
+                }
+
+                &ObjectData::Tuple(ref values) => {
                     let value = if index >= values.len() {
                         Value::None
                     } else {
@@ -521,14 +539,14 @@ impl VM {
 
                 _ => {
                     return Err(SpruceErr::new(
-                        format!("Cannot index into item '{index_item}'"),
+                        format!("Cannot index set item '{index_item}'"),
                         SpruceErrData::VM,
                     ))
                 }
             }
         } else {
             return Err(SpruceErr::new(
-                format!("Cannot index into item '{index_item}'"),
+                format!("Cannot index set item '{index_item}'"),
                 SpruceErrData::VM,
             ));
         }

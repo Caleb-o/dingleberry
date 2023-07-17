@@ -33,7 +33,8 @@ pub enum ByteCode {
     Return,
 
     None,
-    IntoList(u8),
+    IntoList(u16),
+    IntoTuple(u16),
 
     CheckIterObj(u16),
     MakeIterObj,
