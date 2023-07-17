@@ -36,3 +36,14 @@ fn nt_len(_: &mut VM, args: &[Value]) -> Value {
 
     Value::Number(value)
 }
+
+fn nt_freeze(vm: &mut VM, args: &[Value]) -> Value {
+    match &args[0] {
+        Value::Object(obj) => match &*obj.upgrade().unwrap().data.borrow() {
+            ObjectData::List(l) => Value::Object(vm.allocate(ObjectData::Tuple(l.clone().into()))),
+            _ => Value::None,
+        },
+
+        _ => Value::None,
+    }
+}

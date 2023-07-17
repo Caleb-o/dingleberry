@@ -204,7 +204,7 @@ impl VM {
         self.running = true;
         self.register_functions();
 
-        println!("Code: {:?}", self.get_function().code);
+        // println!("Code: {:?}", self.get_function().code);
 
         if let Err(e) = self.run() {
             println!("{e}");
@@ -406,6 +406,7 @@ impl VM {
     fn register_functions(&mut self) {
         self.register_function("print", None, &super::nt_print);
         self.register_function("len", Some(1), &super::nt_len);
+        self.register_function("freeze", Some(1), &super::nt_freeze);
     }
 
     #[inline]
@@ -538,10 +539,11 @@ impl VM {
                 }
 
                 _ => {
+                    drop(data);
                     return Err(SpruceErr::new(
                         format!("Cannot index set item '{index_item}'"),
                         SpruceErrData::VM,
-                    ))
+                    ));
                 }
             }
         } else {

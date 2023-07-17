@@ -86,11 +86,12 @@ impl SymbolTable {
         _ = self.scope.pop();
     }
 
-    fn find_local_symbol_mut_ref(&mut self, identifier: &str) -> Option<&mut (bool, u16)> {
-        let top_scope = self.scope.last_mut().unwrap();
-        for (id, value) in top_scope {
+    fn find_local_symbol(&self, identifier: &str) -> Option<(bool, u16)> {
+        let last = self.scope.last().unwrap();
+
+        for (id, val) in last {
             if *id == identifier {
-                return Some(value);
+                return Some(*val);
             }
         }
 
@@ -109,16 +110,28 @@ impl SymbolTable {
         None
     }
 
-    fn add_symbol(&mut self, token: Token, is_mutable: bool) -> Result<u8, SpruceErr> {
+    #[inline]
+    fn add_global_symbol(&mut self, identifier: String, is_mutable: bool, str_idx: u16) {
+        self.scope[0].insert(identifier, (is_mutable, str_idx));
+    }
+
+    fn add_symbol(
+        &mut self,
+        token: &Token,
+        is_mutable: bool,
+        allow_override: bool,
+    ) -> Result<(), SpruceErr> {
         let top_scope = self.scope.last_mut().unwrap();
         let identifier = token.clone().lexeme.unwrap().get_slice().to_string();
 
-        let file_path = token
-            .lexeme
-            .as_ref()
-            .map(|span| (*span.source.file_path).clone());
+        let symbol_exists = top_scope.contains_key(&identifier);
 
-        if top_scope.contains_key(&identifier) {
+        if !allow_override && symbol_exists {
+            let file_path = token
+                .lexeme
+                .as_ref()
+                .map(|span| (*span.source.file_path).clone());
+
             return Err(SpruceErr::new(
                 format!("Symbol with name '{identifier}' already exists in scope"),
                 SpruceErrData::Compiler {
@@ -129,7 +142,12 @@ impl SymbolTable {
             ));
         }
 
-        if top_scope.len() >= u8::MAX as usize {
+        if top_scope.len() >= u16::MAX as usize {
+            let file_path = token
+                .lexeme
+                .as_ref()
+                .map(|span| (*span.source.file_path).clone());
+
             return Err(SpruceErr::new(
                 format!("Too many symbols in current scope"),
                 SpruceErrData::Compiler {
@@ -140,18 +158,7 @@ impl SymbolTable {
             ));
         }
 
-        top_scope.insert(identifier, (is_mutable, top_scope.len() as u16));
-        Ok((top_scope.len() - 1) as u8)
-    }
-
-    fn add_global_symbol(
-        &mut self,
-        index: u16,
-        identifier: String,
-        is_mutable: bool,
-    ) -> Result<(), SpruceErr> {
-        let top_scope = self.scope.last_mut().unwrap();
-        top_scope.insert(identifier, (is_mutable, index));
+        _ = top_scope.insert(identifier, (is_mutable, top_scope.len() as u16));
         Ok(())
     }
 }
@@ -197,6 +204,24 @@ impl<'a> ByteCompiler<'a> {
     fn add_constant(&mut self, value: Value) -> u16 {
         self.vm.constants.push(value);
         (self.vm.constants.len() - 1) as u16
+    }
+
+    fn find_str_constant(&self, id: &str) -> Option<u16> {
+        for (idx, v) in self.vm.constants.iter().enumerate() {
+            match v {
+                Value::Object(obj) => match &*obj.upgrade().unwrap().data.borrow() {
+                    &ObjectData::Str(ref s) => {
+                        if s == id {
+                            return Some(idx as u16);
+                        }
+                    }
+                    _ => {}
+                },
+                _ => {}
+            }
+        }
+
+        None
     }
 
     fn find_constant(&self, value: &Value) -> Option<u16> {
@@ -297,7 +322,7 @@ impl<'a> ByteCompiler<'a> {
             &AstData::UnaryOp(ref rhs) => self.visit_unary_op(rhs),
             &AstData::FunctionCall(ref fncall) => self.visit_function_call(item, fncall),
             &AstData::ForStatement(ref fstmt) => self.visit_for_statement(item, fstmt),
-            &AstData::IndexGetter(ref getter) => self.visit_index_getter(item, getter),
+            &AstData::IndexGetter(ref getter) => self.visit_index_getter(getter),
             &AstData::IndexSetter(ref setter) => self.visit_index_setter(item, setter),
             &AstData::PropertyGetter(ref getter) => self.visit_property_getter(item, getter),
             &AstData::Body(ref statements) => self.visit_body(item, statements, true),
@@ -466,9 +491,7 @@ impl<'a> ByteCompiler<'a> {
     }
 
     fn visit_parameter(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        _ = self.symbol_table.add_symbol(item.token.clone(), false)?;
-
-        Ok(())
+        self.symbol_table.add_symbol(&item.token, false, false)
     }
 
     fn visit_function(
@@ -488,7 +511,7 @@ impl<'a> ByteCompiler<'a> {
         let last_function = self.current_func.take();
 
         let identifier = if item.token.lexeme.is_some() {
-            _ = self.symbol_table.add_symbol(item.token.clone(), false)?;
+            _ = self.symbol_table.add_symbol(&item.token, false, false)?;
 
             Some(item.token.lexeme.as_ref().unwrap().get_slice().to_string())
         } else {
@@ -574,28 +597,27 @@ impl<'a> ByteCompiler<'a> {
         }
 
         let slice = item.token.lexeme.as_ref().unwrap().get_slice();
-        if let Some(sym) = self.symbol_table.find_local_symbol_mut_ref(slice) {
-            // Update mutability
-            sym.0 = *is_mutable;
-        } else if self.symbol_table.is_global() {
-            let str = self.vm.allocate_string(slice.to_string(), true);
-            let str = Value::Object(str);
-
-            let index = if let Some(index) = self.find_constant(&str) {
+        if self.symbol_table.is_global() {
+            let index = if let Some(index) = self.find_str_constant(slice) {
                 index
             } else {
+                let str = self.vm.allocate_string(slice.to_string(), true);
+                let str = Value::Object(str);
                 self.add_constant(str)
             };
 
             self.func().code.push(ByteCode::DefineGlobal(index));
 
-            _ = self
-                .symbol_table
-                .add_global_symbol(index, slice.to_string(), *is_mutable)?;
+            self.symbol_table
+                .add_global_symbol(slice.to_string(), *is_mutable, index);
+        } else if self.symbol_table.find_local_symbol(slice).is_some() {
+            // Add new symbol
+            self.symbol_table
+                .add_symbol(&item.token, *is_mutable, true)?;
         } else {
             _ = self
                 .symbol_table
-                .add_symbol(item.token.clone(), *is_mutable)?;
+                .add_symbol(&item.token, *is_mutable, false)?;
         }
 
         Ok(())
@@ -690,11 +712,7 @@ impl<'a> ByteCompiler<'a> {
         Ok(())
     }
 
-    fn visit_index_getter(
-        &mut self,
-        item: &Box<Ast>,
-        getter: &IndexGetter,
-    ) -> Result<(), SpruceErr> {
+    fn visit_index_getter(&mut self, getter: &IndexGetter) -> Result<(), SpruceErr> {
         let IndexGetter { expression, index } = &getter;
 
         self.visit(expression)?;
