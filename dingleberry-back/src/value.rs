@@ -47,12 +47,19 @@ impl Value {
 
 impl From<Token> for Value {
     fn from(value: Token) -> Self {
-        let slice = value.lexeme.as_ref().unwrap().get_slice();
-
         match value.kind {
             TokenKind::None => Value::None,
-            TokenKind::Number => Value::Number(slice.parse::<f32>().unwrap()),
-            TokenKind::True | TokenKind::False => Value::Boolean(slice.parse::<bool>().unwrap()),
+            TokenKind::Number => Value::Number(
+                value
+                    .lexeme
+                    .as_ref()
+                    .unwrap()
+                    .get_slice()
+                    .parse::<f32>()
+                    .unwrap(),
+            ),
+            TokenKind::True => Value::Boolean(true),
+            TokenKind::False => Value::Boolean(false),
 
             _ => unreachable!(),
         }
@@ -66,6 +73,19 @@ impl PartialEq for Value {
             (Self::Boolean(l0), Self::Boolean(r0)) => l0 == r0,
             (Self::Object(l0), Self::Object(r0)) => l0.upgrade().unwrap() == r0.upgrade().unwrap(),
             _ => false,
+        }
+    }
+}
+
+impl PartialOrd for Value {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match (self, other) {
+            (Self::Number(l0), Self::Number(r0)) => l0.partial_cmp(r0),
+            (Self::Boolean(l0), Self::Boolean(r0)) => l0.partial_cmp(r0),
+            (Self::Object(l0), Self::Object(r0)) => {
+                l0.upgrade().unwrap().partial_cmp(&r0.upgrade().unwrap())
+            }
+            _ => None,
         }
     }
 }

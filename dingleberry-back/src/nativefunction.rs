@@ -15,6 +15,16 @@ pub struct NativeFunction {
     pub function: NativeFn,
 }
 
+impl PartialOrd for NativeFunction {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match self.identifier.partial_cmp(&other.identifier) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        self.arg_count.partial_cmp(&other.arg_count)
+    }
+}
+
 impl NativeFunction {
     pub fn new(identifier: &'static str, arg_count: Option<u8>, function: NativeFn) -> Self {
         Self {

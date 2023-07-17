@@ -1,0 +1,20 @@
+module Stuff {
+    struct Foo {
+        fn hello {
+            print('Hello!');
+        }
+    }
+
+    struct Bar {
+        fn hello {
+            print('Hello 2!');
+        }
+    }
+
+    fn call_hello(struct_) {
+        struct_.hello();
+    }
+}
+
+Stuff.call_hello(Stuff.Foo());
+Stuff.call_hello(Stuff.Bar());

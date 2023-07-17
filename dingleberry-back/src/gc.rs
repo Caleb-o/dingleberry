@@ -7,7 +7,7 @@ use std::rc::{Rc, Weak};
 
 use crate::byte_compiler::Function;
 use crate::nativefunction::NativeFunction;
-use crate::object::{Object, ObjectData, StructDef};
+use crate::object::{Object, ObjectData};
 use crate::value::Value;
 
 /// Generation contains objects

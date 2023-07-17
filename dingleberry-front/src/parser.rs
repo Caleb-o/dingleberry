@@ -263,7 +263,7 @@ impl Parser {
     fn or(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let mut node = self.equality()?;
 
-        while self.current.kind == TokenKind::And {
+        while self.current.kind == TokenKind::Or {
             let token = self.get_current();
             self.consume_here();
             node = Ast::new_logical_op(token, node, self.expression()?);
@@ -490,6 +490,7 @@ impl Parser {
             statements.push(match self.current.kind {
                 TokenKind::Module => self.module_statement()?,
                 TokenKind::Function => self.function()?,
+                TokenKind::Struct => self.struct_statement()?,
                 // TokenKind::Let => self.let_declaration()?,
                 _ => {
                     return Err(self.error(

@@ -12,6 +12,16 @@ pub enum ByteCode {
     Div,
     Negate,
 
+    Greater,
+    GreaterEq,
+    Less,
+    LessEq,
+    Equal,
+    NotEqual,
+
+    Or,
+    And,
+
     DefineGlobal(u16),
 
     GetLocal(u8),

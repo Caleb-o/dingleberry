@@ -3,7 +3,7 @@ use std::{collections::HashMap, hash::Hash, rc::Rc};
 use dingleberry_front::{
     ast::{Ast, AstData},
     ast_inner::{
-        BinaryOp, ForStatement, FunctionCall, IndexGetter, IndexSetter, PropertyGetter,
+        BinaryOp, ForStatement, FunctionCall, IndexGetter, IndexSetter, LogicalOp, PropertyGetter,
         PropertySetter, VarAssign, VarDeclaration,
     },
     token::{Token, TokenKind},
@@ -42,6 +42,20 @@ pub struct Function {
 impl PartialEq for Function {
     fn eq(&self, other: &Self) -> bool {
         self.identifier == other.identifier && self.arg_count == other.arg_count
+    }
+}
+
+impl PartialOrd for Function {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match self.identifier.partial_cmp(&other.identifier) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        match self.arg_count.partial_cmp(&other.arg_count) {
+            Some(core::cmp::Ordering::Equal) => {}
+            ord => return ord,
+        }
+        self.receiver.partial_cmp(&other.receiver)
     }
 }
 
@@ -287,7 +301,7 @@ impl<'a> ByteCompiler<'a> {
 
     #[inline]
     fn open_module(&mut self, identifier: String) {
-        self.symbol_table.new_scope();
+        self.symbol_table.new_func();
 
         self.current_mod = Some(Module {
             identifier,
@@ -296,7 +310,7 @@ impl<'a> ByteCompiler<'a> {
     }
 
     fn close_module(&mut self, last_mod: Option<Module>) -> u16 {
-        self.symbol_table.close_scope();
+        self.symbol_table.close_func();
 
         let module = self.current_mod.take().unwrap();
         let identifier = module.identifier.clone();
@@ -314,7 +328,7 @@ impl<'a> ByteCompiler<'a> {
 
     #[inline]
     fn open_struct(&mut self, identifier: String) {
-        self.symbol_table.new_scope();
+        self.symbol_table.new_func();
 
         self.current_struct = Some(StructDef {
             identifier,
@@ -323,7 +337,7 @@ impl<'a> ByteCompiler<'a> {
     }
 
     fn close_struct(&mut self, last_struct: Option<StructDef>) -> u16 {
-        self.symbol_table.close_scope();
+        self.symbol_table.close_func();
 
         let struct_ = self.current_struct.take().unwrap();
         let identifier = struct_.identifier.clone();
@@ -423,6 +437,7 @@ impl<'a> ByteCompiler<'a> {
             &AstData::Function(ref func) => self.visit_function(item, func),
             &AstData::BinaryOp(ref bin) => self.visit_binary_op(item, bin),
             &AstData::UnaryOp(ref rhs) => self.visit_unary_op(rhs),
+            &AstData::LogicalOp(ref logic) => self.visit_logical_op(item, logic),
             &AstData::FunctionCall(ref fncall) => self.visit_function_call(item, fncall),
             &AstData::ForStatement(ref fstmt) => self.visit_for_statement(fstmt),
             &AstData::IndexGetter(ref getter) => self.visit_index_getter(getter),
@@ -484,10 +499,6 @@ impl<'a> ByteCompiler<'a> {
         }
 
         Ok(())
-    }
-
-    fn visit_struct_literal(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        todo!()
     }
 
     fn visit_tuple_literal(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
@@ -590,8 +601,28 @@ impl<'a> ByteCompiler<'a> {
         Ok(())
     }
 
-    fn visit_logical_op(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        todo!()
+    fn visit_logical_op(&mut self, item: &Box<Ast>, logic: &LogicalOp) -> Result<(), SpruceErr> {
+        // FIXME: This is inefficient for the case of OR
+        self.visit(&logic.lhs)?;
+        self.visit(&logic.rhs)?;
+
+        self.func().code.push(match item.token.kind {
+            TokenKind::Greater => ByteCode::Greater,
+            TokenKind::GreaterEqual => ByteCode::GreaterEq,
+
+            TokenKind::Less => ByteCode::Less,
+            TokenKind::LessEqual => ByteCode::LessEq,
+
+            TokenKind::EqualEqual => ByteCode::Equal,
+            TokenKind::NotEqual => ByteCode::NotEqual,
+
+            TokenKind::Or => ByteCode::Or,
+            TokenKind::And => ByteCode::And,
+
+            _ => unreachable!(),
+        });
+
+        Ok(())
     }
 
     fn visit_parameter(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {

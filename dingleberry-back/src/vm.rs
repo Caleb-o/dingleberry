@@ -226,7 +226,7 @@ impl VM {
         self.running = true;
         self.register_functions();
 
-        println!("Code: {:?}", self.get_function().code);
+        // println!("Code: {:?}", self.get_function().code);
 
         if let Err(e) = self.run() {
             println!("{e}");
@@ -274,6 +274,18 @@ impl VM {
                             SpruceErrData::VM,
                         ));
                     }
+                }
+
+                ByteCode::Greater
+                | ByteCode::GreaterEq
+                | ByteCode::Less
+                | ByteCode::LessEq
+                | ByteCode::Equal
+                | ByteCode::NotEqual
+                | ByteCode::Or
+                | ByteCode::And => {
+                    let (lhs, rhs) = self.maybe_get_top_two()?;
+                    self.logical_op(instruction, lhs, rhs)?;
                 }
 
                 ByteCode::DefineGlobal(index) => {
@@ -728,6 +740,41 @@ impl VM {
             ByteCode::Sub => Value::Number(lnum - rnum),
             ByteCode::Mul => Value::Number(lnum * rnum),
             ByteCode::Div => Value::Number(lnum / rnum),
+
+            _ => unreachable!(),
+        });
+
+        Ok(())
+    }
+
+    fn logical_op(&mut self, op: ByteCode, lhs: Value, rhs: Value) -> Result<(), SpruceErr> {
+        self.stack.push(match op {
+            ByteCode::Greater => Value::Boolean(lhs > rhs),
+            ByteCode::GreaterEq => Value::Boolean(lhs >= rhs),
+
+            ByteCode::Less => Value::Boolean(lhs < rhs),
+            ByteCode::LessEq => Value::Boolean(lhs <= rhs),
+
+            ByteCode::Equal => Value::Boolean(lhs == rhs),
+            ByteCode::NotEqual => Value::Boolean(lhs != rhs),
+
+            ByteCode::Or => {
+                let (lhs, rhs) = match (&lhs, &rhs) {
+                    (Value::Boolean(lhs), Value::Boolean(rhs)) => (lhs, rhs),
+                    _ => unreachable!(),
+                };
+
+                Value::Boolean(*lhs || *rhs)
+            }
+
+            ByteCode::And => {
+                let (lhs, rhs) = match (&lhs, &rhs) {
+                    (Value::Boolean(lhs), Value::Boolean(rhs)) => (lhs, rhs),
+                    _ => unreachable!(),
+                };
+
+                Value::Boolean(*lhs && *rhs)
+            }
 
             _ => unreachable!(),
         });

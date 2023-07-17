@@ -13,10 +13,22 @@ pub struct Module {
     pub items: HashMap<String, Value>,
 }
 
+impl PartialOrd for Module {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.identifier.partial_cmp(&other.identifier)
+    }
+}
+
 #[derive(Clone, PartialEq)]
 pub struct StructDef {
     pub identifier: String,
     pub items: HashMap<String, Value>,
+}
+
+impl PartialOrd for StructDef {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.identifier.partial_cmp(&other.identifier)
+    }
 }
 
 #[derive(Clone, PartialEq)]
@@ -25,8 +37,14 @@ pub struct StructInstance {
     pub values: HashMap<String, Value>,
 }
 
+impl PartialOrd for StructInstance {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.struct_name.partial_cmp(&other.struct_name)
+    }
+}
+
 /// Data that lives inside of an object, like heaped values
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, PartialOrd)]
 pub enum ObjectData {
     Str(String),
     List(Vec<Value>),
@@ -107,7 +125,7 @@ impl Display for ObjectData {
 }
 
 /// Objects are values that live in the heap
-#[derive(PartialEq)]
+#[derive(PartialEq, PartialOrd)]
 pub struct Object {
     // Mutable state within the object
     pub data: RefCell<ObjectData>,
