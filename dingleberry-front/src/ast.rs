@@ -1,3 +1,9 @@
+use crate::ast_inner::{
+    BinaryOp, ForStatement, Function, FunctionCall, IfStatement, IndexGetter, IndexSetter,
+    LogicalOp, PropertyGetter, PropertySetter, SwitchCase, SwitchStatement, VarAssign,
+    VarAssignEqual, VarDeclaration,
+};
+
 use super::token::Token;
 
 #[derive(Debug, Clone)]
@@ -16,87 +22,31 @@ pub enum AstData {
     ArrayLiteral(Vec<Box<Ast>>),
     ExpressionStatement(bool, Box<Ast>),
 
-    BinaryOp {
-        lhs: Box<Ast>,
-        rhs: Box<Ast>,
-    },
-    UnaryOp {
-        rhs: Box<Ast>,
-    },
-    LogicalOp {
-        lhs: Box<Ast>,
-        rhs: Box<Ast>,
-    },
+    BinaryOp(BinaryOp),
+    UnaryOp(Box<Ast>),
+    LogicalOp(LogicalOp),
 
     Parameter,
 
-    Function {
-        anonymous: bool,
-        parameters: Option<Vec<Box<Ast>>>,
-        body: Box<Ast>,
-    },
-    FunctionCall {
-        lhs: Box<Ast>,
-        arguments: Vec<Box<Ast>>,
-    },
+    Function(Function),
+    FunctionCall(FunctionCall),
 
-    VarDeclaration {
-        is_mutable: bool,
-        expression: Option<Box<Ast>>,
-    },
+    VarDeclaration(VarDeclaration),
     VarDeclarations(Vec<Box<Ast>>),
-    VarAssign {
-        lhs: Box<Ast>,
-        expression: Box<Ast>,
-    },
-    VarAssignEqual {
-        operator: Token,
-        lhs: Box<Ast>,
-        expression: Box<Ast>,
-    },
+    VarAssign(VarAssign),
+    VarAssignEqual(VarAssignEqual),
 
-    IfStatement {
-        is_expression: bool,
-        condition: Box<Ast>,
-        true_body: Box<Ast>,
-        false_body: Option<Box<Ast>>,
-    },
+    IfStatement(IfStatement),
+    ForStatement(ForStatement),
 
-    ForStatement {
-        variable: Option<Box<Ast>>,
-        expression: Option<Box<Ast>>,
-        body: Box<Ast>,
-    },
+    IndexGetter(IndexGetter),
+    IndexSetter(IndexSetter),
 
-    IndexGetter {
-        expression: Box<Ast>,
-        index: Box<Ast>,
-    },
+    PropertyGetter(PropertyGetter),
+    PropertySetter(PropertySetter),
 
-    IndexSetter {
-        expression: Box<Ast>,
-        rhs: Box<Ast>,
-    },
-
-    PropertyGetter {
-        lhs: Box<Ast>,
-        property: Box<Ast>,
-    },
-
-    PropertySetter {
-        lhs: Box<Ast>,
-        expression: Box<Ast>,
-    },
-
-    SwitchStatement {
-        condition: Box<Ast>,
-        cases: Vec<Box<Ast>>,
-    },
-
-    SwitchCase {
-        case: Option<Box<Ast>>,
-        body: Box<Ast>,
-    },
+    SwitchStatement(SwitchStatement),
+    SwitchCase(SwitchCase),
 
     This,
 
@@ -189,10 +139,10 @@ impl Ast {
     pub fn new_var_decl(token: Token, is_mutable: bool, expression: Option<Box<Ast>>) -> Box<Self> {
         Box::new(Self {
             token,
-            data: AstData::VarDeclaration {
+            data: AstData::VarDeclaration(VarDeclaration {
                 is_mutable,
                 expression,
-            },
+            }),
         })
     }
 
@@ -206,7 +156,7 @@ impl Ast {
     pub fn new_var_assign(token: Token, lhs: Box<Ast>, expression: Box<Ast>) -> Box<Self> {
         Box::new(Self {
             token,
-            data: AstData::VarAssign { lhs, expression },
+            data: AstData::VarAssign(VarAssign { lhs, expression }),
         })
     }
 
@@ -218,11 +168,11 @@ impl Ast {
     ) -> Box<Self> {
         Box::new(Self {
             token,
-            data: AstData::VarAssignEqual {
+            data: AstData::VarAssignEqual(VarAssignEqual {
                 operator,
                 lhs,
                 expression,
-            },
+            }),
         })
     }
 
@@ -234,11 +184,11 @@ impl Ast {
     ) -> Box<Self> {
         Box::new(Self {
             token,
-            data: AstData::Function {
+            data: AstData::Function(Function {
                 anonymous,
                 parameters,
                 body,
-            },
+            }),
         })
     }
 
@@ -279,12 +229,12 @@ impl Ast {
     ) -> Box<Self> {
         Box::new(Self {
             token,
-            data: AstData::IfStatement {
+            data: AstData::IfStatement(IfStatement {
                 is_expression,
                 condition,
                 true_body,
                 false_body,
-            },
+            }),
         })
     }
 
@@ -296,25 +246,25 @@ impl Ast {
     ) -> Box<Self> {
         Box::new(Self {
             token,
-            data: AstData::ForStatement {
+            data: AstData::ForStatement(ForStatement {
                 variable,
                 expression,
                 body,
-            },
+            }),
         })
     }
 
     pub fn new_function_call(token: Token, lhs: Box<Ast>, arguments: Vec<Box<Ast>>) -> Box<Self> {
         Box::new(Self {
             token,
-            data: AstData::FunctionCall { lhs, arguments },
+            data: AstData::FunctionCall(FunctionCall { lhs, arguments }),
         })
     }
 
     pub fn new_switch_case(token: Token, case: Option<Box<Ast>>, body: Box<Ast>) -> Box<Self> {
         Box::new(Self {
             token,
-            data: AstData::SwitchCase { case, body },
+            data: AstData::SwitchCase(SwitchCase { case, body }),
         })
     }
 
@@ -325,56 +275,56 @@ impl Ast {
     ) -> Box<Self> {
         Box::new(Self {
             token,
-            data: AstData::SwitchStatement { condition, cases },
+            data: AstData::SwitchStatement(SwitchStatement { condition, cases }),
         })
     }
 
     pub fn new_binary_op(token: Token, lhs: Box<Ast>, rhs: Box<Ast>) -> Box<Self> {
         Box::new(Self {
             token,
-            data: AstData::BinaryOp { lhs, rhs },
+            data: AstData::BinaryOp(BinaryOp { lhs, rhs }),
         })
     }
 
     pub fn new_unary_op(token: Token, rhs: Box<Ast>) -> Box<Self> {
         Box::new(Self {
             token,
-            data: AstData::UnaryOp { rhs },
+            data: AstData::UnaryOp(rhs),
         })
     }
 
     pub fn new_logical_op(token: Token, lhs: Box<Ast>, rhs: Box<Ast>) -> Box<Self> {
         Box::new(Self {
             token,
-            data: AstData::LogicalOp { lhs, rhs },
+            data: AstData::LogicalOp(LogicalOp { lhs, rhs }),
         })
     }
 
     pub fn new_index_getter(token: Token, expression: Box<Ast>, index: Box<Ast>) -> Box<Self> {
         Box::new(Self {
             token,
-            data: AstData::IndexGetter { expression, index },
+            data: AstData::IndexGetter(IndexGetter { expression, index }),
         })
     }
 
     pub fn new_index_setter(token: Token, expression: Box<Ast>, rhs: Box<Ast>) -> Box<Self> {
         Box::new(Self {
             token,
-            data: AstData::IndexSetter { expression, rhs },
+            data: AstData::IndexSetter(IndexSetter { expression, rhs }),
         })
     }
 
     pub fn new_property_getter(token: Token, lhs: Box<Ast>, property: Box<Ast>) -> Box<Self> {
         Box::new(Self {
             token,
-            data: AstData::PropertyGetter { lhs, property },
+            data: AstData::PropertyGetter(PropertyGetter { lhs, property }),
         })
     }
 
     pub fn new_property_setter(token: Token, lhs: Box<Ast>, expression: Box<Ast>) -> Box<Self> {
         Box::new(Self {
             token,
-            data: AstData::PropertySetter { lhs, expression },
+            data: AstData::PropertySetter(PropertySetter { lhs, expression }),
         })
     }
 }

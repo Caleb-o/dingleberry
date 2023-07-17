@@ -1,13 +1,14 @@
-use std::{collections::HashMap, rc::Rc};
+use std::{collections::HashMap, fs, rc::Rc};
 
 use dingleberry_front::{
     ast::{Ast, AstData},
+    ast_inner::{
+        BinaryOp, ForStatement, FunctionCall, IndexGetter, IndexSetter, PropertyGetter, VarAssign,
+        VarDeclaration,
+    },
     token::{Token, TokenKind},
 };
-use dingleberry_shared::{
-    error::{SpruceErr, SpruceErrData},
-    visitor::Visitor,
-};
+use dingleberry_shared::error::{SpruceErr, SpruceErrData};
 
 use crate::{
     bytecode::ByteCode,
@@ -283,28 +284,26 @@ impl<'a> ByteCompiler<'a> {
     fn func(&mut self) -> &mut Function {
         Rc::get_mut(self.current_func.as_mut().unwrap()).unwrap()
     }
-}
 
-impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
     fn visit(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
         match &item.data {
-            &AstData::Program(_) => self.visit_program(item),
+            &AstData::Program(ref statements) => self.visit_program(statements),
             &AstData::Empty => self.visit_empty(item),
-            &AstData::VarDeclarations(_) => self.visit_var_declarations(item),
-            &AstData::VarDeclaration { .. } => self.visit_var_declaration(item),
-            &AstData::VarAssign { .. } => self.visit_var_assign(item),
-            &AstData::Function { .. } => self.visit_function(item),
-            &AstData::BinaryOp { .. } => self.visit_binary_op(item),
-            &AstData::UnaryOp { .. } => self.visit_unary_op(item),
-            &AstData::FunctionCall { .. } => self.visit_function_call(item),
-            &AstData::ForStatement { .. } => self.visit_for_statement(item),
-            &AstData::IndexGetter { .. } => self.visit_index_getter(item),
-            &AstData::IndexSetter { .. } => self.visit_index_setter(item),
-            &AstData::PropertyGetter { .. } => self.visit_property_getter(item),
-            &AstData::Body(_) => self.visit_body(item, true),
+            &AstData::VarDeclarations(ref decls) => self.visit_var_declarations(decls),
+            &AstData::VarDeclaration(ref decl) => self.visit_var_declaration(item, decl),
+            &AstData::VarAssign(ref assign) => self.visit_var_assign(item, assign),
+            &AstData::Function(ref func) => self.visit_function(item, func),
+            &AstData::BinaryOp(ref bin) => self.visit_binary_op(item, bin),
+            &AstData::UnaryOp(ref rhs) => self.visit_unary_op(rhs),
+            &AstData::FunctionCall(ref fncall) => self.visit_function_call(item, fncall),
+            &AstData::ForStatement(ref fstmt) => self.visit_for_statement(item, fstmt),
+            &AstData::IndexGetter(ref getter) => self.visit_index_getter(item, getter),
+            &AstData::IndexSetter(ref setter) => self.visit_index_setter(item, setter),
+            &AstData::PropertyGetter(ref getter) => self.visit_property_getter(item, getter),
+            &AstData::Body(ref statements) => self.visit_body(item, statements, true),
             &AstData::This => self.visit_this(item),
-            &AstData::Return(_) => self.visit_return_statement(item),
-            &AstData::Module(_) => self.visit_module(item),
+            &AstData::Return(ref expr) => self.visit_return_statement(item, expr),
+            &AstData::Module(ref items) => self.visit_module(item, items),
             &AstData::Identifier => self.visit_identifier(item),
             &AstData::Literal => self.visit_literal(item),
             &AstData::ArrayLiteral(_) => self.visit_array_literal(item),
@@ -437,8 +436,8 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
         Ok(())
     }
 
-    fn visit_binary_op(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        let AstData::BinaryOp { lhs, rhs } = &item.data else { unreachable!() } ;
+    fn visit_binary_op(&mut self, item: &Box<Ast>, binary: &BinaryOp) -> Result<(), SpruceErr> {
+        let BinaryOp { lhs, rhs } = &binary;
 
         self.visit(lhs)?;
         self.visit(rhs)?;
@@ -455,9 +454,7 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
         Ok(())
     }
 
-    fn visit_unary_op(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        let AstData::UnaryOp { rhs } = &item.data else { unreachable!() };
-
+    fn visit_unary_op(&mut self, rhs: &Box<Ast>) -> Result<(), SpruceErr> {
         self.visit(rhs)?;
         self.func().code.push(ByteCode::Negate);
 
@@ -469,15 +466,21 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
     }
 
     fn visit_parameter(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        let AstData::Parameter = &item.data else { unreachable!() };
-
         _ = self.symbol_table.add_symbol(item.token.clone(), false)?;
 
         Ok(())
     }
 
-    fn visit_function(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        let AstData::Function { anonymous, parameters, body } = &item.data else { unreachable!() };
+    fn visit_function(
+        &mut self,
+        item: &Box<Ast>,
+        func: &dingleberry_front::ast_inner::Function,
+    ) -> Result<(), SpruceErr> {
+        let dingleberry_front::ast_inner::Function {
+            anonymous,
+            parameters,
+            body,
+        } = &func;
 
         let last_ctx = self.ctx;
         self.ctx = Context::Function;
@@ -521,8 +524,12 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
         Ok(())
     }
 
-    fn visit_function_call(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        let AstData::FunctionCall { lhs, arguments } = &item.data else { unreachable!() };
+    fn visit_function_call(
+        &mut self,
+        item: &Box<Ast>,
+        fncall: &FunctionCall,
+    ) -> Result<(), SpruceErr> {
+        let FunctionCall { lhs, arguments } = &fncall;
 
         for arg in arguments {
             self.visit(arg)?;
@@ -552,8 +559,15 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
         Ok(())
     }
 
-    fn visit_var_declaration(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        let AstData::VarDeclaration { is_mutable, expression } = &item.data else { unreachable!() };
+    fn visit_var_declaration(
+        &mut self,
+        item: &Box<Ast>,
+        decl: &VarDeclaration,
+    ) -> Result<(), SpruceErr> {
+        let VarDeclaration {
+            is_mutable,
+            expression,
+        } = &decl;
 
         if let Some(expression) = expression {
             self.visit(expression)?;
@@ -587,19 +601,17 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
         Ok(())
     }
 
-    fn visit_var_declarations(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        let AstData::VarDeclarations(decls) = &item.data else { unreachable!() };
-
+    fn visit_var_declarations(&mut self, decls: &Vec<Box<Ast>>) -> Result<(), SpruceErr> {
         for item in decls {
-            self.visit_var_declaration(item)?;
+            let AstData::VarDeclaration(ref decl) = &item.data else { unreachable!() };
+            self.visit_var_declaration(item, decl)?;
         }
 
         Ok(())
     }
 
-    fn visit_var_assign(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        let AstData::VarAssign { lhs, expression } = &item.data else { unreachable!() };
-
+    fn visit_var_assign(&mut self, item: &Box<Ast>, assign: &VarAssign) -> Result<(), SpruceErr> {
+        let VarAssign { lhs, expression } = &assign;
         self.visit(expression)?;
 
         let identifier = lhs.token.lexeme.as_ref().unwrap().get_slice().to_string();
@@ -655,8 +667,16 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
         todo!()
     }
 
-    fn visit_for_statement(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        let AstData::ForStatement { variable, expression, body } = &item.data else { unreachable!() };
+    fn visit_for_statement(
+        &mut self,
+        item: &Box<Ast>,
+        fstmt: &ForStatement,
+    ) -> Result<(), SpruceErr> {
+        let ForStatement {
+            variable,
+            expression,
+            body,
+        } = &fstmt;
 
         // Infinite loop
         if variable.is_none() && expression.is_none() {
@@ -670,8 +690,12 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
         Ok(())
     }
 
-    fn visit_index_getter(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        let AstData::IndexGetter { expression, index } = &item.data else { unreachable!() };
+    fn visit_index_getter(
+        &mut self,
+        item: &Box<Ast>,
+        getter: &IndexGetter,
+    ) -> Result<(), SpruceErr> {
+        let IndexGetter { expression, index } = &getter;
 
         self.visit(expression)?;
         self.visit(index)?;
@@ -681,9 +705,13 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
         Ok(())
     }
 
-    fn visit_index_setter(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        let AstData::IndexSetter { expression, rhs } = &item.data else { unreachable!() };
-        let AstData::IndexGetter { expression, index } = &expression.data else { unreachable!() };
+    fn visit_index_setter(
+        &mut self,
+        item: &Box<Ast>,
+        setter: &IndexSetter,
+    ) -> Result<(), SpruceErr> {
+        let IndexSetter { expression, rhs } = &setter;
+        let AstData::IndexGetter(IndexGetter { expression, index }) = &expression.data else { unreachable!() };
 
         self.visit(expression)?;
         self.visit(index)?;
@@ -694,8 +722,12 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
         Ok(())
     }
 
-    fn visit_property_getter(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        let AstData::PropertyGetter { lhs, property } = &item.data else { unreachable!() };
+    fn visit_property_getter(
+        &mut self,
+        item: &Box<Ast>,
+        getter: &PropertyGetter,
+    ) -> Result<(), SpruceErr> {
+        let PropertyGetter { lhs, property } = &getter;
 
         self.visit(lhs)?;
 
@@ -724,9 +756,11 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
         todo!()
     }
 
-    fn visit_return_statement(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        let AstData::Return(expr) = &item.data else { unreachable!() } ;
-
+    fn visit_return_statement(
+        &mut self,
+        item: &Box<Ast>,
+        expr: &Option<Box<Ast>>,
+    ) -> Result<(), SpruceErr> {
         if let Some(expr) = expr {
             self.visit(expr)?;
         }
@@ -753,9 +787,12 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
         Ok(())
     }
 
-    fn visit_body(&mut self, item: &Box<Ast>, new_scope: bool) -> Result<(), SpruceErr> {
-        let AstData::Body(statements) = &item.data else { unreachable!() };
-
+    fn visit_body(
+        &mut self,
+        item: &Box<Ast>,
+        statements: &Vec<Box<Ast>>,
+        new_scope: bool,
+    ) -> Result<(), SpruceErr> {
         if new_scope {
             self.symbol_table.new_scope();
         }
@@ -784,9 +821,7 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
         todo!()
     }
 
-    fn visit_program(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        let AstData::Program(statements) = &item.data else { unreachable!() };
-
+    fn visit_program(&mut self, statements: &Vec<Box<Ast>>) -> Result<(), SpruceErr> {
         for stmt in statements {
             self.visit(stmt)?;
         }
@@ -798,9 +833,7 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
         Ok(())
     }
 
-    fn visit_module(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        let AstData::Module(items) = &item.data else { unreachable!() };
-
+    fn visit_module(&mut self, item: &Box<Ast>, items: &Vec<Box<Ast>>) -> Result<(), SpruceErr> {
         let last_ctx = self.container_ctx;
         self.container_ctx = ContainerContext::Module;
 
@@ -829,8 +862,6 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
     }
 
     fn visit_this(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        let AstData::This = &item.data else { unreachable!() };
-
         if self.container_ctx == ContainerContext::None {
             let file_path = item
                 .token

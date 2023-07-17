@@ -7,7 +7,10 @@ use std::{
 
 use dingleberry_shared::error::{SpruceErr, SpruceErrData};
 
-use crate::source::Source;
+use crate::{
+    ast_inner::{BinaryOp, Function},
+    source::Source,
+};
 
 use super::{
     ast::{Ast, AstData},
@@ -604,7 +607,7 @@ impl Parser {
         let node = match self.current.kind {
             TokenKind::Function => {
                 let func = self.function()?;
-                if let AstData::Function { body, .. } = &func.data {
+                if let AstData::Function(Function { body, .. }) = &func.data {
                     if let AstData::Return(_) = &body.data {
                         self.consume(TokenKind::SemiColon, "Expect ';' after function statement")?;
                     }
@@ -870,7 +873,7 @@ impl Parser {
                 }
                 TokenKind::Function => {
                     let func = self.function()?;
-                    if let AstData::Function { body, .. } = &func.data {
+                    if let AstData::Function(Function { body, .. }) = &func.data {
                         if let AstData::Return(_) = &body.data {
                             self.consume(
                                 TokenKind::SemiColon,
@@ -904,7 +907,7 @@ fn simple_binary_operation() {
 
     assert!(matches!(expr.data, AstData::BinaryOp { .. }));
 
-    let AstData::BinaryOp { lhs, rhs } = expr.data else { unreachable!() };
+    let AstData::BinaryOp(BinaryOp { lhs, rhs }) = expr.data else { unreachable!() };
     assert!(matches!(lhs.data, AstData::Literal));
     assert!(matches!(rhs.data, AstData::Literal));
 }

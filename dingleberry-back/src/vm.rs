@@ -204,7 +204,7 @@ impl VM {
         self.running = true;
         self.register_functions();
 
-        // println!("Code: {:?}", self.get_function().code);
+        println!("Code: {:?}", self.get_function().code);
 
         if let Err(e) = self.run() {
             println!("{e}");
@@ -326,16 +326,16 @@ impl VM {
                 ByteCode::Jump(index) => self.set_current_ip(index as usize),
 
                 ByteCode::IntoList(count) => {
-                    let start = self.func_stack_start();
-                    let moved_values = self.stack.drain(start..start + count as usize).collect();
+                    let end = self.stack.len();
+                    let moved_values = self.stack.drain(end - count as usize..).collect();
 
                     let reference = self.allocate(ObjectData::List(moved_values));
                     self.stack.push(Value::Object(reference));
                 }
 
                 ByteCode::IntoTuple(count) => {
-                    let start = self.func_stack_start();
-                    let moved_values = self.stack.drain(start..start + count as usize).collect();
+                    let end = self.stack.len();
+                    let moved_values = self.stack.drain(end - count as usize..).collect();
 
                     let reference = self.allocate(ObjectData::Tuple(moved_values));
                     self.stack.push(Value::Object(reference));
