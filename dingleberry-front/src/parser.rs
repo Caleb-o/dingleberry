@@ -905,6 +905,7 @@ impl Parser {
                 }
                 TokenKind::Module => statements.push(self.module_statement()?),
                 TokenKind::Struct => statements.push(self.struct_statement()?),
+                TokenKind::If => statements.push(self.if_expression_statement(false)?),
                 TokenKind::Function => {
                     let func = self.function()?;
                     if let AstData::Function(Function { body, .. }) = &func.data {
