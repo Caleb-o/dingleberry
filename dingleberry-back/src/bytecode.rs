@@ -48,4 +48,6 @@ pub enum ByteCode {
 
     CheckIterObj(u16),
     MakeIterObj,
+
+    Error,
 }

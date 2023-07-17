@@ -3,8 +3,8 @@ use std::{collections::HashMap, hash::Hash, rc::Rc};
 use dingleberry_front::{
     ast::{Ast, AstData},
     ast_inner::{
-        BinaryOp, ForStatement, FunctionCall, IndexGetter, IndexSetter, LogicalOp, PropertyGetter,
-        PropertySetter, VarAssign, VarDeclaration,
+        BinaryOp, ForStatement, FunctionCall, IfStatement, IndexGetter, IndexSetter, LogicalOp,
+        PropertyGetter, PropertySetter, VarAssign, VarDeclaration,
     },
     token::{Token, TokenKind},
 };
@@ -445,6 +445,7 @@ impl<'a> ByteCompiler<'a> {
             &AstData::PropertyGetter(ref getter) => self.visit_property_getter(getter),
             &AstData::PropertySetter(ref setter) => self.visit_property_setter(setter),
             &AstData::Body(ref statements) => self.visit_body(statements, true),
+            &AstData::IfStatement(ref statement) => self.visit_if_statement(statement),
             &AstData::This => self.visit_this(item),
             &AstData::Return(ref expr) => self.visit_return_statement(item, expr),
             &AstData::Module(ref items) => self.visit_module(item, items),
@@ -837,8 +838,37 @@ impl<'a> ByteCompiler<'a> {
         todo!()
     }
 
-    fn visit_if_statement(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        todo!()
+    fn visit_if_statement(&mut self, statement: &IfStatement) -> Result<(), SpruceErr> {
+        let IfStatement {
+            is_expression,
+            condition,
+            true_body,
+            false_body,
+        } = statement;
+
+        self.visit(condition)?;
+        let jump_loc = self.func().code.len();
+        self.func().code.push(ByteCode::Error);
+
+        self.visit(true_body)?;
+
+        if let Some(false_body) = false_body {
+            let true_jump_loc = self.func().code.len();
+            self.func().code.push(ByteCode::Error);
+
+            // Relative jump
+            self.func().code[jump_loc] = ByteCode::JumpNot(self.func().code.len() as u16);
+
+            self.visit(false_body)?;
+
+            // Relative jump
+            self.func().code[true_jump_loc] = ByteCode::Jump(self.func().code.len() as u16);
+        } else {
+            // Relative jump
+            self.func().code[jump_loc] = ByteCode::JumpNot(self.func().code.len() as u16);
+        }
+
+        Ok(())
     }
 
     fn visit_for_statement(&mut self, fstmt: &ForStatement) -> Result<(), SpruceErr> {

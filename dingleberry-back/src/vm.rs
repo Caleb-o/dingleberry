@@ -366,6 +366,24 @@ impl VM {
 
                 ByteCode::Jump(index) => self.set_current_ip(index as usize),
 
+                ByteCode::JumpNot(index) => {
+                    let value = self.peek();
+
+                    match value {
+                        Value::Boolean(b) => {
+                            if !b {
+                                self.set_current_ip(index as usize);
+                            }
+                        }
+                        _ => {
+                            return Err(SpruceErr::new(
+                                format!("Cannot compare non-boolean value '{value}'"),
+                                SpruceErrData::VM,
+                            ))
+                        }
+                    }
+                }
+
                 ByteCode::IntoList(count) => {
                     let end = self.stack.len();
                     let moved_values = self.stack.drain(end - count as usize..).collect();
@@ -829,6 +847,11 @@ impl VM {
     #[inline]
     fn set_current_ip(&mut self, ip: usize) {
         self.call_stack.last_mut().unwrap().ip = ip;
+    }
+
+    #[inline]
+    fn offset_ip(&mut self, ip: usize) {
+        self.call_stack.last_mut().unwrap().ip += ip;
     }
 
     #[inline]
