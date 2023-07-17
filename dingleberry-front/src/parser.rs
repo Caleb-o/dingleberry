@@ -98,6 +98,12 @@ impl Parser {
                 Ok(Ast::new_literal(token))
             }
 
+            TokenKind::This => {
+                let token = self.get_current();
+                self.consume_here();
+                Ok(Ast::new_this(token))
+            }
+
             TokenKind::LParen => {
                 self.consume_here();
                 let expr = self.expression()?;

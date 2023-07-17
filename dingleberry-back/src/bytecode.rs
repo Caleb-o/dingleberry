@@ -22,6 +22,7 @@ pub enum ByteCode {
     IndexGet,
     IndexSet,
 
+    This,
     PropertyGet(u16),
     PropertySet(u16),
 

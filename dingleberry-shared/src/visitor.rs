@@ -34,6 +34,7 @@ pub trait Visitor<T, U> {
     fn visit_switch_statement(&mut self, item: &T) -> Result<U, SpruceErr>;
     fn visit_switch_case(&mut self, item: &T) -> Result<U, SpruceErr>;
 
+    fn visit_this(&mut self, item: &T) -> Result<U, SpruceErr>;
     fn visit_return_statement(&mut self, item: &T) -> Result<U, SpruceErr>;
     fn visit_body(&mut self, item: &T, new_scope: bool) -> Result<U, SpruceErr>;
     fn visit_include(&mut self, item: &T) -> Result<U, SpruceErr>;

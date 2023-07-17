@@ -41,6 +41,7 @@ impl Generation {
             obj.marked.set(false);
             is_marked
         });
+        self.objects.shrink_to_fit();
     }
 
     pub fn transfer(&mut self, from: &mut Self) {
@@ -128,10 +129,6 @@ impl GarbageCollector {
         }
 
         match &*root.data.borrow() {
-            &ObjectData::Str(_) | &ObjectData::Function(_) | &ObjectData::NativeFunction(_) => {
-                root.marked.set(true)
-            }
-
             &ObjectData::List(ref items) => {
                 for item in items {
                     if let Value::Object(obj) = item {
@@ -149,6 +146,8 @@ impl GarbageCollector {
                 }
                 root.marked.set(true);
             }
+
+            _ => root.marked.set(true),
         }
     }
 
@@ -234,6 +233,22 @@ mod tests {
         vm.pop();
         vm.collect_all();
 
+        assert_eq!(vm.gc.old.objects.len(), 0);
+    }
+
+    #[test]
+    fn long_loop() {
+        let mut vm = VM::new();
+
+        for _ in 0..2048 {
+            let hello = Value::Object(vm.allocate_string("hello world".into(), false));
+            vm.push(hello);
+            vm.pop();
+        }
+
+        vm.collect();
+
+        assert_eq!(vm.gc.young.objects.len(), 0);
         assert_eq!(vm.gc.old.objects.len(), 0);
     }
 }

@@ -181,7 +181,11 @@ impl Lexer {
                 len,
                 &[("ut", TokenKind::Mutable), ("odule", TokenKind::Module)],
             ),
-            't' => self.check_if_matches(start, len, &[("rue", TokenKind::True)]),
+            't' => self.check_if_matches(
+                start,
+                len,
+                &[("his", TokenKind::This), ("rue", TokenKind::True)],
+            ),
             'w' => self.check_if_matches(start, len, &[("hile", TokenKind::While)]),
 
             '_' => self.check_if_matches(start, len, &[("_", TokenKind::UnderscoreUnderscore)]),

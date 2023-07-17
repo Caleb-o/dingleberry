@@ -23,11 +23,19 @@ enum Context {
     Function,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum ContainerContext {
+    None,
+    Module,
+}
+
 #[derive(Debug, Clone)]
 pub struct Function {
     pub identifier: Option<String>,
     pub arg_count: u8,
     pub code: Vec<ByteCode>,
+
+    pub receiver: Option<Value>,
 }
 
 impl PartialEq for Function {
@@ -42,6 +50,7 @@ impl Function {
             identifier,
             arg_count,
             code: Vec::new(),
+            receiver: None,
         })
     }
 }
@@ -149,6 +158,7 @@ pub struct ByteCompiler<'a> {
     current_mod: Option<Module>,
     symbol_table: SymbolTable,
     ctx: Context,
+    container_ctx: ContainerContext,
     vm: &'a mut VM,
 }
 
@@ -159,6 +169,7 @@ impl<'a> ByteCompiler<'a> {
             current_mod: None,
             symbol_table: SymbolTable::new(),
             ctx: Context::None,
+            container_ctx: ContainerContext::None,
             vm,
         }
     }
@@ -285,6 +296,7 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
             &AstData::IndexSetter { .. } => self.visit_index_setter(item),
             &AstData::PropertyGetter { .. } => self.visit_property_getter(item),
             &AstData::Body(_) => self.visit_body(item, true),
+            &AstData::This => self.visit_this(item),
             &AstData::Return(_) => self.visit_return_statement(item),
             &AstData::Module(_) => self.visit_module(item),
             &AstData::Identifier => self.visit_identifier(item),
@@ -753,6 +765,9 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
     fn visit_module(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
         let AstData::Module(items) = &item.data else { unreachable!() };
 
+        let last_ctx = self.container_ctx;
+        self.container_ctx = ContainerContext::Module;
+
         let identifier = item.token.lexeme.as_ref().unwrap().get_slice().to_string();
         let last_mod = self.current_mod.take();
 
@@ -772,6 +787,33 @@ impl<'a> Visitor<Box<Ast>, ()> for ByteCompiler<'a> {
                 .code
                 .push(ByteCode::ConstantByte(module_idx as u8));
         }
+
+        self.container_ctx = last_ctx;
+        Ok(())
+    }
+
+    fn visit_this(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
+        let AstData::This = &item.data else { unreachable!() };
+
+        if self.container_ctx == ContainerContext::None {
+            let file_path = item
+                .token
+                .lexeme
+                .as_ref()
+                .map(|span| (*span.source.file_path).clone());
+
+            return Err(SpruceErr::new(
+                "Cannot use 'this' outside of modules".into(),
+                SpruceErrData::Compiler {
+                    file_path,
+                    line: item.token.line,
+                    column: item.token.column,
+                },
+            ));
+        }
+
+        self.func().code.push(ByteCode::This);
+
         Ok(())
     }
 }

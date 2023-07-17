@@ -21,6 +21,7 @@ const STRINGS_BEFORE_SWEEP: usize = 64;
 struct CallFrame {
     pub ip: usize,
     pub identifier: String,
+    pub arg_count: u8,
     pub stack_start: usize,
     pub function: Rc<Object>,
 }
@@ -141,7 +142,7 @@ impl VM {
             }
 
             // TODO: Consider a module constructor
-            n @ (ObjectData::Str(_) | ObjectData::List(_) | ObjectData::Module { .. }) => {
+            n @ _ => {
                 return Err(SpruceErr::new(
                     format!("Cannot call non-function value '{n:?}'"),
                     SpruceErrData::VM,
@@ -167,6 +168,7 @@ impl VM {
             } else {
                 arg_count
             };
+
             let args = self
                 .stack
                 .drain((self.stack.len() - arg_count)..)
@@ -176,10 +178,22 @@ impl VM {
             return Ok(());
         }
 
+        let receiver_arg = if let ObjectData::Function(func) = &*maybe_function.data.borrow() {
+            if let Some(rec) = &func.receiver {
+                self.push(rec.clone());
+                1
+            } else {
+                0
+            }
+        } else {
+            0
+        };
+
         self.call_stack.push(CallFrame {
             ip: 0,
             identifier: identifier.clone(),
-            stack_start: self.stack.len() - arg_count,
+            arg_count: (receiver_arg + arg_count) as u8,
+            stack_start: self.stack.len() - receiver_arg - arg_count,
             function: maybe_function,
         });
 
@@ -189,6 +203,8 @@ impl VM {
     pub fn start(&mut self) {
         self.running = true;
         self.register_functions();
+
+        // println!("Code: {:?}", self.get_function().code);
 
         if let Err(e) = self.run() {
             println!("{e}");
@@ -320,6 +336,14 @@ impl VM {
                 ByteCode::Call(arg_count) => {
                     let function = self.pop();
                     self.call(function, arg_count as usize)?;
+                }
+
+                ByteCode::This => {
+                    let start = self.func_stack_start();
+                    let args = self.call_stack.last().unwrap().arg_count as usize;
+                    let pos = start + args - 1;
+
+                    self.push(self.stack[pos].clone());
                 }
 
                 ByteCode::None => self.stack.push(Value::None),
@@ -516,13 +540,21 @@ impl VM {
         if let Value::Object(obj) = &item {
             match &*obj.upgrade().unwrap().data.borrow() {
                 &ObjectData::Module(ref module) => {
-                    self.push(
-                        module
-                            .items
-                            .get(&property)
-                            .map(|v| (*v).clone())
-                            .unwrap_or(Value::None),
-                    );
+                    let value = module
+                        .items
+                        .get(&property)
+                        .map(|v| (*v).clone())
+                        .unwrap_or(Value::None);
+
+                    if let Value::Object(obj) = &value {
+                        if let ObjectData::Function(function) =
+                            &mut *obj.upgrade().unwrap().data.borrow_mut()
+                        {
+                            Rc::get_mut(function).unwrap().receiver = Some(item.clone());
+                        }
+                    }
+
+                    self.push(value);
                 }
                 n => {
                     return Err(SpruceErr::new(

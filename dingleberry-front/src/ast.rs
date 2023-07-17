@@ -98,6 +98,8 @@ pub enum AstData {
         body: Box<Ast>,
     },
 
+    This,
+
     Return(Option<Box<Ast>>),
     Body(Vec<Box<Ast>>),
     StdInclude,
@@ -251,6 +253,13 @@ impl Ast {
         Box::new(Self {
             token,
             data: AstData::Parameter,
+        })
+    }
+
+    pub fn new_this(token: Token) -> Box<Self> {
+        Box::new(Self {
+            token,
+            data: AstData::This,
         })
     }
 
