@@ -1,5 +1,5 @@
 use crate::ast_inner::{
-    BinaryOp, ForStatement, Function, FunctionCall, IfStatement, IndexGetter, IndexSetter,
+    BinaryOp, ForStatement, Function, FunctionCall, IfStatement, Include, IndexGetter, IndexSetter,
     LogicalOp, PropertyGetter, PropertySetter, SwitchCase, SwitchStatement, VarAssign,
     VarAssignEqual, VarDeclaration,
 };
@@ -52,7 +52,7 @@ pub enum AstData {
 
     Return(Option<Box<Ast>>),
     Body(Vec<Box<Ast>>),
-    StdInclude,
+    Include(Include),
     Module(Vec<Box<Ast>>),
     StructDef(Vec<Box<Ast>>),
     Program(Vec<Box<Ast>>),
@@ -67,10 +67,10 @@ impl Ast {
         })
     }
 
-    pub fn new_std_include(token: Token) -> Box<Self> {
+    pub fn new_include(token: Token, root: Box<Ast>, module_name: Option<Token>) -> Box<Self> {
         Box::new(Self {
             token,
-            data: AstData::StdInclude,
+            data: AstData::Include(Include { root, module_name }),
         })
     }
 

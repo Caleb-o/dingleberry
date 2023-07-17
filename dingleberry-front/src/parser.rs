@@ -23,7 +23,8 @@ pub struct Parser {
     source: Rc<Source>,
     current: Token,
     had_error: bool,
-    included: HashSet<PathBuf>,
+    included: HashSet<Box<PathBuf>>,
+    current_path: Box<PathBuf>,
 }
 
 impl Parser {
@@ -31,12 +32,18 @@ impl Parser {
         let mut lexer = Lexer::new(Rc::clone(&source));
         let token = lexer.next();
 
+        let mut included = HashSet::new();
+        let path = Path::new(&*source.file_path).canonicalize().unwrap();
+        let current_path = Box::new(path.clone().parent().unwrap().to_path_buf());
+        included.insert(Box::new(path));
+
         Self {
             lexer,
             source,
             current: token,
             had_error: false,
-            included: HashSet::new(),
+            included,
+            current_path,
         }
     }
 
@@ -765,80 +772,81 @@ impl Parser {
     fn include(&mut self) -> Result<Box<Ast>, SpruceErr> {
         self.consume_here();
         match self.current.kind {
-            TokenKind::Identifier | TokenKind::String => {
-                // TODO: Check if path is already included, can use std lib token
-                let include = if self.current.kind == TokenKind::Identifier {
-                    let identifier = self
-                        .source
-                        .maybe_slice_from(self.get_current().lexeme)
-                        .unwrap_or(&self.current.kind.to_string())
-                        .to_string();
-
-                    let path = PathBuf::from(identifier);
-                    if self.included.contains(&path) {
-                        let noop = Ast::new_empty(self.get_current());
-                        self.consume_here();
-                        return Ok(noop);
-                    }
-                    self.included.insert(path);
-
-                    let token = self.get_current();
-                    self.consume_here();
-
-                    Ast::new_std_include(token)
-                } else {
-                    let maybe_path = Path::new(&*self.lexer.source.file_path)
-                        .parent()
-                        .unwrap()
-                        .join(
-                            self.source
-                                .maybe_slice_from(self.get_current().lexeme)
-                                .unwrap_or(&self.current.kind.to_string()),
-                        );
-
-                    let include_path = fs::canonicalize(&maybe_path);
-
-                    if include_path.is_err() {
-                        let path = maybe_path.to_str().unwrap().to_string();
-                        return Err(self.error(format!("Include path does not exist '{}'", path)));
-                    }
-
-                    let include_path = include_path.unwrap();
-
-                    if self.included.contains(&include_path) {
-                        let noop = Ast::new_empty(self.get_current());
-                        self.consume_here();
-                        return Ok(noop);
-                    }
-
-                    let _source = fs::read_to_string(&include_path).unwrap();
-                    // // let program = match util::compile_source(
-                    // //     include_str.clone(),
-                    // //     source,
-                    // //     self.args.clone(),
-                    // // ) {
-                    // //     Ok((_, program)) => program,
-                    // //     Err(e) => {
-                    // //         return Err(self.error(format!(
-                    // //             "Could not parse '{}' because {}",
-                    // //             include_str, e.message
-                    // //         )))
-                    // //     }
-                    // // };
-
-                    self.included.insert(include_path);
-                    // program
-
-                    // FIXME: Make the above code not trash to allow imports
-                    Ast::new_empty(self.get_current())
-                };
-
+            TokenKind::String => {
+                let token = self.get_current();
                 self.consume_here();
 
-                Ok(include)
+                let module_name = if self.current.kind == TokenKind::In {
+                    self.consume_here();
+                    let token = self.get_current();
+                    self.consume(
+                        TokenKind::Identifier,
+                        "Expect identifier after include 'in'",
+                    )?;
+                    Some(token)
+                } else {
+                    None
+                };
+
+                let path_token = token.clone();
+                let slice = path_token.lexeme.as_ref().unwrap().get_slice();
+                let file_name = &slice[1..slice.len() - 1];
+                let file_path = PathBuf::from(format!(
+                    "{}/{}.dingle",
+                    self.current_path.display(),
+                    file_name
+                ));
+
+                if !Path::exists(&file_path) {
+                    return Err(SpruceErr::new(
+                        format!("Cannot find file '{file_path:?}'"),
+                        SpruceErrData::Parser {
+                            file_path: (*self.source.file_path).clone(),
+                            line: token.line,
+                            column: token.column,
+                        },
+                    ));
+                }
+
+                let boxed_path = Box::new(file_path.clone());
+
+                if self.included.contains(&boxed_path) {
+                    return Ok(Ast::new_empty(token));
+                }
+
+                self.included.insert(boxed_path.clone());
+
+                let last_path = self.current_path.clone();
+                self.current_path = Box::new(file_path.parent().unwrap().to_path_buf());
+
+                let content = fs::read_to_string(&*file_path).unwrap();
+                let source = Rc::new(Source::new(
+                    file_path.as_os_str().to_str().unwrap().to_string(),
+                    content,
+                ));
+
+                let old_source = self.source.clone();
+                let last_token = self.current.clone();
+                let last_lexer = self.lexer.clone();
+
+                // Do stuff
+                let mut lexer = Lexer::new(source);
+                self.current = lexer.next();
+                self.lexer = lexer;
+
+                let root = self.run()?;
+
+                // Restore old path values
+
+                self.current_path = last_path;
+                self.source = old_source;
+                self.lexer = last_lexer;
+                self.current = last_token;
+
+                Ok(Ast::new_include(token, root, module_name))
             }
             _ => Err(self.error(format!(
-                "Include expected string or identifier, but recieved '{}'",
+                "Include expected string, but recieved '{}'",
                 self.source
                     .maybe_slice_from(self.get_current().lexeme)
                     .unwrap_or(&self.current.kind.to_string())

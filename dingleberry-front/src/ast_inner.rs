@@ -26,6 +26,12 @@ pub struct FunctionCall {
 }
 
 #[derive(Debug, Clone)]
+pub struct Include {
+    pub root: Box<Ast>,
+    pub module_name: Option<Token>,
+}
+
+#[derive(Debug, Clone)]
 pub struct VarDeclaration {
     pub is_mutable: bool,
     pub expression: Option<Box<Ast>>,

@@ -3,8 +3,8 @@ use std::{collections::HashMap, hash::Hash, rc::Rc};
 use dingleberry_front::{
     ast::{Ast, AstData},
     ast_inner::{
-        BinaryOp, ForStatement, FunctionCall, IfStatement, IndexGetter, IndexSetter, LogicalOp,
-        PropertyGetter, PropertySetter, VarAssign, VarDeclaration,
+        BinaryOp, ForStatement, FunctionCall, IfStatement, Include, IndexGetter, IndexSetter,
+        LogicalOp, PropertyGetter, PropertySetter, VarAssign, VarDeclaration,
     },
     token::{Token, TokenKind},
 };
@@ -430,6 +430,7 @@ impl<'a> ByteCompiler<'a> {
     fn visit(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
         match &item.data {
             &AstData::Program(ref statements) => self.visit_program(statements),
+            &AstData::Include(ref incl) => self.visit_include(incl),
             &AstData::Empty => self.visit_empty(item),
             &AstData::VarDeclarations(ref decls) => self.visit_var_declarations(decls),
             &AstData::VarDeclaration(ref decl) => self.visit_var_declaration(item, decl),
@@ -1017,8 +1018,13 @@ impl<'a> ByteCompiler<'a> {
         Ok(())
     }
 
-    fn visit_include(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        todo!()
+    fn visit_include(&mut self, incl: &Include) -> Result<(), SpruceErr> {
+        if let Some(module_name) = &incl.module_name {
+            todo!();
+        } else {
+            self.visit(&incl.root)?;
+        }
+        Ok(())
     }
 
     fn visit_program(&mut self, statements: &Vec<Box<Ast>>) -> Result<(), SpruceErr> {

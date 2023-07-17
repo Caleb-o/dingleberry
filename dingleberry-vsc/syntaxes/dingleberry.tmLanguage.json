@@ -22,7 +22,7 @@
       "patterns": [
         {
           "name": "keyword.control.dingleberry",
-          "match": "\\b(if|else|for|in|fn|return|mut|module|struct|this|true|false|none)\\b"
+          "match": "\\b(include|if|else|for|in|fn|return|mut|module|struct|this|true|false|none)\\b"
         }
       ]
     },

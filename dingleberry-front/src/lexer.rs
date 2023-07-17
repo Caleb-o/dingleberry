@@ -4,6 +4,7 @@ use crate::{source::Source, token::Span};
 
 use super::token::{Token, TokenKind};
 
+#[derive(Clone)]
 pub struct Lexer {
     pub source: Rc<Source>,
     line: u32,
