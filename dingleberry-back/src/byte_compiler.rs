@@ -142,14 +142,39 @@ impl SymbolTable {
     }
 
     #[inline]
-    fn add_global_symbol(&mut self, identifier: String, is_mutable: bool, str_idx: u16) {
+    fn add_global_symbol(
+        &mut self,
+        identifier: &Token,
+        is_mutable: bool,
+        str_idx: u16,
+    ) -> Result<(), SpruceErr> {
+        let string = identifier.lexeme.as_ref().unwrap().get_slice().to_string();
+
+        if self.find_symbol_any(&string).is_some() {
+            let file_path = identifier
+                .lexeme
+                .as_ref()
+                .map(|span| (*span.source.file_path).clone());
+
+            return Err(SpruceErr::new(
+                format!("Symbol with name '{string}' already exists in scope"),
+                SpruceErrData::Compiler {
+                    file_path,
+                    line: identifier.line,
+                    column: identifier.column,
+                },
+            ));
+        }
+
         self.scope.push(Symbol {
-            identifier,
+            identifier: string,
             mutable: is_mutable,
             index: str_idx,
             depth: 0,
         });
         *self.in_depth.last_mut().unwrap() += 1;
+
+        Ok(())
     }
 
     #[inline]
@@ -418,7 +443,7 @@ impl<'a> ByteCompiler<'a> {
             };
 
             self.symbol_table
-                .add_global_symbol(slice.to_string(), is_mutable, index);
+                .add_global_symbol(token, is_mutable, index)?;
         } else {
             self.symbol_table
                 .add_symbol(token, is_mutable, allow_override)?;
@@ -759,7 +784,7 @@ impl<'a> ByteCompiler<'a> {
             self.func().code.push(ByteCode::DefineGlobal(index));
 
             self.symbol_table
-                .add_global_symbol(slice.to_string(), *is_mutable, index);
+                .add_global_symbol(&item.token, *is_mutable, index)?;
         } else if self.symbol_table.find_local_symbol(slice).is_some() {
             // Add new symbol
             self.symbol_table
@@ -1020,7 +1045,18 @@ impl<'a> ByteCompiler<'a> {
 
     fn visit_include(&mut self, incl: &Include) -> Result<(), SpruceErr> {
         if let Some(module_name) = &incl.module_name {
-            todo!();
+            let last_container = self.container_ctx;
+            self.container_ctx = ContainerContext::Module;
+
+            let last_mod = self.current_mod.take();
+            self.open_module(module_name.lexeme.as_ref().unwrap().get_slice().to_string());
+
+            self.visit(&incl.root)?;
+
+            _ = self.close_module(last_mod);
+            self.add_symbol(&module_name, false, false)?;
+
+            self.container_ctx = last_container;
         } else {
             self.visit(&incl.root)?;
         }
@@ -1053,6 +1089,7 @@ impl<'a> ByteCompiler<'a> {
         }
 
         let module_idx = self.close_module(last_mod);
+        self.add_symbol(&item.token, false, false)?;
 
         if self.current_mod.is_some() {
             let module = &self.vm.constants[module_idx as usize];
@@ -1085,6 +1122,7 @@ impl<'a> ByteCompiler<'a> {
         }
 
         let struct_idx = self.close_struct(last_struct);
+        self.add_symbol(&item.token, false, false)?;
 
         match last_ctx {
             ContainerContext::Module => {

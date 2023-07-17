@@ -44,6 +44,18 @@ fn nt_fields_of(vm: &mut VM, args: &[Value]) -> Value {
 
     match &args[0] {
         Value::Object(obj) => match &*obj.upgrade().unwrap().data.borrow() {
+            ObjectData::Module(module) => {
+                for field in &module.items {
+                    let string = vm.allocate_string(field.0.clone(), true);
+                    let tuple = vm.allocate(ObjectData::Tuple(Box::new([
+                        Value::Object(string),
+                        field.1.clone(),
+                    ])));
+
+                    fields.push(Value::Object(tuple));
+                }
+            }
+
             ObjectData::StructDef(struct_def) => {
                 for field in &struct_def.items {
                     let string = vm.allocate_string(field.0.clone(), true);

@@ -810,7 +810,9 @@ impl Parser {
 
                 let boxed_path = Box::new(file_path.clone());
 
-                if self.included.contains(&boxed_path) {
+                // FIXME: This is not really good, because a file might be loaded and parsed
+                // several times over. We should at least cache the root AST and return it again
+                if module_name.is_none() && self.included.contains(&boxed_path) {
                     return Ok(Ast::new_empty(token));
                 }
 
