@@ -13,6 +13,18 @@ pub struct Module {
     pub items: HashMap<String, Value>,
 }
 
+#[derive(Clone, PartialEq)]
+pub struct StructDef {
+    pub identifier: String,
+    pub items: HashMap<String, Value>,
+}
+
+#[derive(Clone, PartialEq)]
+pub struct StructInstance {
+    pub struct_name: String,
+    pub values: HashMap<String, Value>,
+}
+
 /// Data that lives inside of an object, like heaped values
 #[derive(Clone, PartialEq)]
 pub enum ObjectData {
@@ -22,6 +34,8 @@ pub enum ObjectData {
     Function(Rc<Function>),
     NativeFunction(NativeFunction),
     Module(Rc<Module>),
+    StructDef(Rc<StructDef>),
+    StructInstance(Rc<StructInstance>),
 }
 
 impl Debug for ObjectData {
@@ -33,6 +47,8 @@ impl Debug for ObjectData {
             Self::Function(_) => write!(f, "Function"),
             Self::NativeFunction(_) => write!(f, "NativeFunction"),
             Self::Module { .. } => write!(f, "Module"),
+            Self::StructDef(_) => write!(f, "StructDef"),
+            Self::StructInstance(_) => write!(f, "StructInstance"),
         }
     }
 }
@@ -82,6 +98,10 @@ impl Display for ObjectData {
             }
 
             Self::Module(m) => write!(f, "module<{}>", m.identifier),
+
+            Self::StructDef(s) => write!(f, "struct_def<{}>", s.identifier),
+
+            Self::StructInstance(s) => write!(f, "struct_inst<{}>", s.struct_name),
         }
     }
 }

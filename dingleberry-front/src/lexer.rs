@@ -174,7 +174,11 @@ impl Lexer {
             'n' => self.check_if_matches(start, len, &[("one", TokenKind::None)]),
             'o' => self.check_if_matches(start, len, &[("r", TokenKind::Or)]),
             'r' => self.check_if_matches(start, len, &[("eturn", TokenKind::Return)]),
-            's' => self.check_if_matches(start, len, &[("witch", TokenKind::Switch)]),
+            's' => self.check_if_matches(
+                start,
+                len,
+                &[("truct", TokenKind::Struct), ("witch", TokenKind::Switch)],
+            ),
             'l' => self.check_if_matches(start, len, &[("et", TokenKind::Let)]),
             'm' => self.check_if_matches(
                 start,

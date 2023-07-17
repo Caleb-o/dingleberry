@@ -54,6 +54,7 @@ pub enum AstData {
     Body(Vec<Box<Ast>>),
     StdInclude,
     Module(Vec<Box<Ast>>),
+    StructDef(Vec<Box<Ast>>),
     Program(Vec<Box<Ast>>),
     Empty,
 }
@@ -77,6 +78,13 @@ impl Ast {
         Box::new(Self {
             token,
             data: AstData::Module(body),
+        })
+    }
+
+    pub fn new_struct_def(token: Token, body: Vec<Box<Ast>>) -> Box<Self> {
+        Box::new(Self {
+            token,
+            data: AstData::StructDef(body),
         })
     }
 

@@ -7,7 +7,7 @@ use std::rc::{Rc, Weak};
 
 use crate::byte_compiler::Function;
 use crate::nativefunction::NativeFunction;
-use crate::object::{Object, ObjectData};
+use crate::object::{Object, ObjectData, StructDef};
 use crate::value::Value;
 
 /// Generation contains objects
@@ -99,6 +99,8 @@ impl GarbageCollector {
             ObjectData::Function(_) => std::mem::size_of::<Function>(),
             ObjectData::NativeFunction(_) => std::mem::size_of::<NativeFunction>(),
             ObjectData::Module(m) => std::mem::size_of::<Value>() * m.items.len(),
+            ObjectData::StructDef(s) => std::mem::size_of::<Value>() * s.items.len(),
+            ObjectData::StructInstance(s) => std::mem::size_of::<Value>() * s.values.len(),
         } + std::mem::size_of::<ObjectData>();
 
         self.bytes_allocated += to_alloc_bytes;

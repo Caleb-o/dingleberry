@@ -11,7 +11,7 @@ use crate::{
     bytecode::ByteCode,
     gc::{GarbageCollector, Roots},
     nativefunction::{NativeFn, NativeFunction},
-    object::{Object, ObjectData},
+    object::{Object, ObjectData, StructInstance},
     value::Value,
 };
 
@@ -137,14 +137,20 @@ impl VM {
                 function.identifier.clone().unwrap_or("Anonymous".into()),
                 Some(function.arg_count),
             ),
+
             ObjectData::NativeFunction(function) => {
                 (function.identifier.to_string(), function.arg_count)
+            }
+
+            ObjectData::StructDef(struct_) => {
+                // TODO: Check for constructor
+                (struct_.identifier.clone(), Some(0))
             }
 
             // TODO: Consider a module constructor
             n @ _ => {
                 return Err(SpruceErr::new(
-                    format!("Cannot call non-function value '{n:?}'"),
+                    format!("Trying to call non-callable value '{n:?}'"),
                     SpruceErrData::VM,
                 ));
             }
@@ -162,31 +168,47 @@ impl VM {
             ));
         }
 
-        if let ObjectData::NativeFunction(func) = &*maybe_function.data.borrow() {
-            let arg_count = if func.arg_count.is_some() {
-                func.arg_count.unwrap() as usize
-            } else {
-                arg_count
-            };
+        match &*maybe_function.data.borrow() {
+            ObjectData::NativeFunction(func) => {
+                let arg_count = if func.arg_count.is_some() {
+                    func.arg_count.unwrap() as usize
+                } else {
+                    arg_count
+                };
 
-            let args = self
-                .stack
-                .drain((self.stack.len() - arg_count)..)
-                .collect::<Vec<Value>>();
-            let value = (func.function)(self, &args);
-            self.stack.push(value);
-            return Ok(());
+                let args = self
+                    .stack
+                    .drain((self.stack.len() - arg_count)..)
+                    .collect::<Vec<Value>>();
+                let value = (func.function)(self, &args);
+                self.stack.push(value);
+                return Ok(());
+            }
+
+            ObjectData::StructDef(struct_) => {
+                let values = struct_.items.clone();
+                let struct_ = self.allocate(ObjectData::StructInstance(Rc::new(StructInstance {
+                    struct_name: struct_.identifier.clone(),
+                    values,
+                })));
+
+                self.stack.push(Value::Object(struct_));
+                return Ok(());
+            }
+
+            _ => {}
         }
 
-        let receiver_arg = if let ObjectData::Function(func) = &*maybe_function.data.borrow() {
-            if let Some(rec) = &func.receiver {
-                self.push(rec.clone());
-                1
-            } else {
-                0
+        let receiver_arg = match &*maybe_function.data.borrow() {
+            ObjectData::Function(func) => {
+                if let Some(rec) = &func.receiver {
+                    self.push(rec.clone());
+                    1
+                } else {
+                    0
+                }
             }
-        } else {
-            0
+            _ => 0,
         };
 
         self.call_stack.push(CallFrame {
@@ -347,6 +369,17 @@ impl VM {
                 }
 
                 ByteCode::This => {
+                    let function = self.get_function();
+                    if function.receiver.is_none() {
+                        return Err(SpruceErr::new(
+                            format!(
+                                "Function '{}' does not have a receiver to use 'this'",
+                                function.identifier.as_ref().unwrap_or(&"Anon".to_string())
+                            ),
+                            SpruceErrData::VM,
+                        ));
+                    }
+
                     let start = self.func_stack_start();
                     let args = self.call_stack.last().unwrap().arg_count as usize;
                     let pos = start + args - 1;
@@ -407,6 +440,7 @@ impl VM {
         self.register_function("print", None, &super::nt_print);
         self.register_function("len", Some(1), &super::nt_len);
         self.register_function("freeze", Some(1), &super::nt_freeze);
+        self.register_function("fields_of", Some(1), &super::nt_fields_of);
 
         // Debugging functions
         self.register_function("dbg_stack", None, &super::nt_dbg_stack);
@@ -571,15 +605,55 @@ impl VM {
                         .unwrap_or(Value::None);
 
                     if let Value::Object(obj) = &value {
-                        if let ObjectData::Function(function) =
-                            &mut *obj.upgrade().unwrap().data.borrow_mut()
-                        {
-                            Rc::get_mut(function).unwrap().receiver = Some(item.clone());
+                        match &mut *obj.upgrade().unwrap().data.borrow_mut() {
+                            ObjectData::Function(function) => {
+                                Rc::get_mut(function).unwrap().receiver = Some(item.clone());
+                            }
+                            _ => {}
                         }
                     }
 
                     self.push(value);
                 }
+
+                &ObjectData::StructDef(ref struct_) => {
+                    let value: Value = struct_
+                        .items
+                        .get(&property)
+                        .map(|v| (*v).clone())
+                        .unwrap_or(Value::None);
+
+                    if let Value::Object(obj) = &value {
+                        match &mut *obj.upgrade().unwrap().data.borrow_mut() {
+                            ObjectData::Function(function) => {
+                                Rc::get_mut(function).unwrap().receiver = Some(item.clone());
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    self.push(value);
+                }
+
+                &ObjectData::StructInstance(ref struct_) => {
+                    let value: Value = struct_
+                        .values
+                        .get(&property)
+                        .map(|v| (*v).clone())
+                        .unwrap_or(Value::None);
+
+                    if let Value::Object(obj) = &value {
+                        match &mut *obj.upgrade().unwrap().data.borrow_mut() {
+                            ObjectData::Function(function) => {
+                                Rc::get_mut(function).unwrap().receiver = Some(item.clone());
+                            }
+                            _ => {}
+                        }
+                    }
+
+                    self.push(value);
+                }
+
                 n => {
                     return Err(SpruceErr::new(
                         format!("Cannot access property on {n:?}"),

@@ -31,10 +31,51 @@ fn nt_len(_: &mut VM, args: &[Value]) -> Value {
             ObjectData::Function(f) => f.arg_count as usize,
             ObjectData::NativeFunction(f) => f.arg_count.unwrap_or_default() as usize,
             ObjectData::Module(m) => m.items.len(),
+            ObjectData::StructDef(_) => 0,
+            ObjectData::StructInstance(_) => 0,
         },
     } as f32;
 
     Value::Number(value)
+}
+
+fn nt_fields_of(vm: &mut VM, args: &[Value]) -> Value {
+    let mut fields = Vec::new();
+
+    match &args[0] {
+        Value::Object(obj) => match &*obj.upgrade().unwrap().data.borrow() {
+            ObjectData::StructDef(struct_def) => {
+                for field in &struct_def.items {
+                    let string = vm.allocate_string(field.0.clone(), true);
+                    let tuple = vm.allocate(ObjectData::Tuple(Box::new([
+                        Value::Object(string),
+                        field.1.clone(),
+                    ])));
+
+                    fields.push(Value::Object(tuple));
+                }
+            }
+
+            ObjectData::StructInstance(struct_inst) => {
+                for field in &struct_inst.values {
+                    let string = vm.allocate_string(field.0.clone(), true);
+                    let tuple = vm.allocate(ObjectData::Tuple(Box::new([
+                        Value::Object(string),
+                        field.1.clone(),
+                    ])));
+
+                    fields.push(Value::Object(tuple));
+                }
+            }
+
+            _ => {}
+        },
+
+        _ => {}
+    }
+
+    let fields = vm.allocate(ObjectData::List(fields));
+    Value::Object(fields)
 }
 
 fn nt_freeze(vm: &mut VM, args: &[Value]) -> Value {
@@ -48,12 +89,12 @@ fn nt_freeze(vm: &mut VM, args: &[Value]) -> Value {
     }
 }
 
-fn nt_dbg_stack(vm: &mut VM, args: &[Value]) -> Value {
+fn nt_dbg_stack(vm: &mut VM, _: &[Value]) -> Value {
     println!("Stack {:?}", vm.stack);
     Value::None
 }
 
-fn nt_dbg_globals(vm: &mut VM, args: &[Value]) -> Value {
+fn nt_dbg_globals(vm: &mut VM, _: &[Value]) -> Value {
     println!("Globals {:?}", vm.globals.values());
     Value::None
 }

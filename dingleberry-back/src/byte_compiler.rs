@@ -1,4 +1,4 @@
-use std::{collections::HashMap, rc::Rc};
+use std::{collections::HashMap, hash::Hash, rc::Rc};
 
 use dingleberry_front::{
     ast::{Ast, AstData},
@@ -12,7 +12,7 @@ use dingleberry_shared::error::{SpruceErr, SpruceErrData};
 
 use crate::{
     bytecode::ByteCode,
-    object::{Module, ObjectData},
+    object::{Module, ObjectData, StructDef},
     value::Value,
     vm::VM,
 };
@@ -27,6 +27,7 @@ enum Context {
 enum ContainerContext {
     None,
     Module,
+    Struct,
 }
 
 #[derive(Debug, Clone)]
@@ -203,6 +204,7 @@ impl SymbolTable {
 pub struct ByteCompiler<'a> {
     current_func: Option<Rc<Function>>,
     current_mod: Option<Module>,
+    current_struct: Option<StructDef>,
     symbol_table: SymbolTable,
     ctx: Context,
     container_ctx: ContainerContext,
@@ -214,6 +216,7 @@ impl<'a> ByteCompiler<'a> {
         Self {
             current_func: Some(Function::new(Some("script".into()), 0)),
             current_mod: None,
+            current_struct: None,
             symbol_table: SymbolTable::new(),
             ctx: Context::None,
             container_ctx: ContainerContext::None,
@@ -292,7 +295,6 @@ impl<'a> ByteCompiler<'a> {
         });
     }
 
-    #[inline]
     fn close_module(&mut self, last_mod: Option<Module>) -> u16 {
         self.symbol_table.close_scope();
 
@@ -311,9 +313,42 @@ impl<'a> ByteCompiler<'a> {
     }
 
     #[inline]
+    fn open_struct(&mut self, identifier: String) {
+        self.symbol_table.new_scope();
+
+        self.current_struct = Some(StructDef {
+            identifier,
+            items: HashMap::new(),
+        });
+    }
+
+    fn close_struct(&mut self, last_struct: Option<StructDef>) -> u16 {
+        self.symbol_table.close_scope();
+
+        let struct_ = self.current_struct.take().unwrap();
+        let identifier = struct_.identifier.clone();
+        self.current_struct = last_struct;
+
+        let struct_ = self.vm.allocate(ObjectData::StructDef(Rc::new(struct_)));
+        self.vm.constants.push(Value::Object(struct_.clone()));
+
+        if self.current_struct.is_none() {
+            self.vm.globals.insert(identifier, Value::Object(struct_));
+        }
+
+        (self.vm.constants.len() - 1) as u16
+    }
+
+    #[inline]
     fn add_item_to_module(&mut self, identifier: String, value: Value) {
         let module = self.current_mod.as_mut().unwrap();
         module.items.insert(identifier, value);
+    }
+
+    #[inline]
+    fn add_item_to_struct(&mut self, identifier: String, value: Value) {
+        let struct_ = self.current_struct.as_mut().unwrap();
+        struct_.items.insert(identifier, value);
     }
 
     #[inline]
@@ -329,7 +364,7 @@ impl<'a> ByteCompiler<'a> {
         let func = self.current_func.take().unwrap();
         self.current_func = last_fn;
 
-        if anonymous || self.current_mod.is_some() {
+        if anonymous || self.current_mod.is_some() || self.current_struct.is_some() {
             let obj = self.vm.allocate(ObjectData::Function(func));
             self.vm.constants.push(Value::Object(obj));
             Some((self.vm.constants.len() - 1) as u16)
@@ -397,6 +432,7 @@ impl<'a> ByteCompiler<'a> {
             &AstData::This => self.visit_this(item),
             &AstData::Return(ref expr) => self.visit_return_statement(item, expr),
             &AstData::Module(ref items) => self.visit_module(item, items),
+            &AstData::StructDef(ref items) => self.visit_struct_def(item, items),
             &AstData::Identifier => self.visit_identifier(item),
             &AstData::Literal => self.visit_literal(item),
             &AstData::ArrayLiteral(_) => self.visit_array_literal(item),
@@ -599,7 +635,7 @@ impl<'a> ByteCompiler<'a> {
             }
         }
 
-        if self.container_ctx == ContainerContext::Module {
+        if self.container_ctx != ContainerContext::None {
             self.inject_symbol("self", false);
         }
 
@@ -610,9 +646,13 @@ impl<'a> ByteCompiler<'a> {
         }
 
         if let Some(index) = self.close_function(*anonymous, last_function) {
-            if !anonymous && self.current_mod.is_some() {
+            if !anonymous {
                 let func = &self.vm.constants[index as usize];
-                self.add_item_to_module(identifier.unwrap().clone(), func.clone());
+                if self.container_ctx == ContainerContext::Module {
+                    self.add_item_to_module(identifier.unwrap().clone(), func.clone());
+                } else if self.container_ctx == ContainerContext::Struct {
+                    self.add_item_to_struct(identifier.unwrap().clone(), func.clone());
+                }
             } else if *anonymous {
                 self.func().code.push(ByteCode::ConstantByte(index as u8));
             }
@@ -936,6 +976,47 @@ impl<'a> ByteCompiler<'a> {
             self.func()
                 .code
                 .push(ByteCode::ConstantByte(module_idx as u8));
+        }
+
+        self.container_ctx = last_ctx;
+        Ok(())
+    }
+
+    fn visit_struct_def(
+        &mut self,
+        item: &Box<Ast>,
+        items: &Vec<Box<Ast>>,
+    ) -> Result<(), SpruceErr> {
+        let last_ctx = self.container_ctx;
+        self.container_ctx = ContainerContext::Struct;
+
+        let identifier = item.token.lexeme.as_ref().unwrap().get_slice().to_string();
+        let last_struct = self.current_struct.take();
+
+        self.open_struct(identifier.clone());
+
+        for item in items {
+            self.visit(item)?;
+        }
+
+        let struct_idx = self.close_struct(last_struct);
+
+        match last_ctx {
+            ContainerContext::Module => {
+                let struct_ = &self.vm.constants[struct_idx as usize];
+                self.add_item_to_module(identifier, struct_.clone());
+            }
+
+            ContainerContext::Struct => {
+                let struct_ = &self.vm.constants[struct_idx as usize];
+                self.add_item_to_struct(identifier, struct_.clone());
+            }
+
+            _ => {
+                self.func()
+                    .code
+                    .push(ByteCode::ConstantByte(struct_idx as u8));
+            }
         }
 
         self.container_ctx = last_ctx;

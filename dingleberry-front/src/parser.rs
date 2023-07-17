@@ -503,6 +503,37 @@ impl Parser {
         Ok(Ast::new_module(identifier, statements))
     }
 
+    fn struct_statement(&mut self) -> Result<Box<Ast>, SpruceErr> {
+        self.consume_here();
+
+        let identifier = self.get_current();
+        self.consume(TokenKind::Identifier, "Expect identifier after 'struct'")?;
+        self.consume(TokenKind::LCurly, "Expect '{' after struct identifier")?;
+
+        let mut statements = Vec::new();
+
+        while self.current.kind != TokenKind::EndOfFile && self.current.kind != TokenKind::RCurly {
+            statements.push(match self.current.kind {
+                TokenKind::Struct => self.struct_statement()?,
+                TokenKind::Function => self.function()?,
+                TokenKind::Let => {
+                    let let_decl = self.let_declaration()?;
+                    self.consume(TokenKind::SemiColon, "Expect semicolon after struct let member")?;
+                    let_decl
+                },
+
+                n => {
+                    return Err(self.error(format!(
+                        "Unknown item in struct body '{n:?}'. Can only have structs, functions and let bindings",
+                    )))
+                }
+            });
+        }
+
+        self.consume(TokenKind::RCurly, "Expect '}' after struct body")?;
+        Ok(Ast::new_struct_def(identifier, statements))
+    }
+
     fn if_expression_statement(&mut self, force_else: bool) -> Result<Box<Ast>, SpruceErr> {
         let token = self.get_current();
         self.consume_here();
@@ -614,7 +645,7 @@ impl Parser {
                 }
                 func
             }
-            TokenKind::Module => self.module_statement()?,
+
             TokenKind::If => self.if_expression_statement(false)?,
             TokenKind::For => self.for_statement()?,
             TokenKind::Switch => self.switch_statement()?,
@@ -871,6 +902,8 @@ impl Parser {
                     statements.push(self.include()?);
                     self.consume(TokenKind::SemiColon, "Expect ';' after include statement")?;
                 }
+                TokenKind::Module => statements.push(self.module_statement()?),
+                TokenKind::Struct => statements.push(self.struct_statement()?),
                 TokenKind::Function => {
                     let func = self.function()?;
                     if let AstData::Function(Function { body, .. }) = &func.data {
