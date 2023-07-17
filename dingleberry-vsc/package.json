@@ -1,0 +1,38 @@
+{
+  "name": "dingleberry",
+  "displayName": "dingleberry",
+  "description": "A scripting language",
+  "author": {
+    "name": "Caleb",
+    "url": "https://github.com/Caleb-o/Dingleberry"
+  },
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.77.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "dingleberry",
+        "aliases": [
+          "Dingleberry",
+          "dingleberry"
+        ],
+        "extensions": [
+          ".dingle"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "dingleberry",
+        "scopeName": "source.dingleberry",
+        "path": "./syntaxes/dingleberry.tmLanguage.json"
+      }
+    ]
+  }
+}
