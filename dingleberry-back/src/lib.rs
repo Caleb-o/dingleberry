@@ -47,3 +47,13 @@ fn nt_freeze(vm: &mut VM, args: &[Value]) -> Value {
         _ => Value::None,
     }
 }
+
+fn nt_dbg_stack(vm: &mut VM, args: &[Value]) -> Value {
+    println!("Stack {:?}", vm.stack);
+    Value::None
+}
+
+fn nt_dbg_globals(vm: &mut VM, args: &[Value]) -> Value {
+    println!("Globals {:?}", vm.globals.values());
+    Value::None
+}

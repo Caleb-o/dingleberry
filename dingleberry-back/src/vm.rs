@@ -204,7 +204,7 @@ impl VM {
         self.running = true;
         self.register_functions();
 
-        // println!("Code: {:?}", self.get_function().code);
+        println!("Code: {:?}", self.get_function().code);
 
         if let Err(e) = self.run() {
             println!("{e}");
@@ -407,6 +407,10 @@ impl VM {
         self.register_function("print", None, &super::nt_print);
         self.register_function("len", Some(1), &super::nt_len);
         self.register_function("freeze", Some(1), &super::nt_freeze);
+
+        // Debugging functions
+        self.register_function("dbg_stack", None, &super::nt_dbg_stack);
+        self.register_function("dbg_globals", None, &super::nt_dbg_globals);
     }
 
     #[inline]
