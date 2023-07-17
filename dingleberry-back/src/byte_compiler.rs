@@ -3,8 +3,8 @@ use std::{collections::HashMap, hash::Hash, rc::Rc};
 use dingleberry_front::{
     ast::{Ast, AstData},
     ast_inner::{
-        BinaryOp, ForStatement, FunctionCall, IndexGetter, IndexSetter, PropertyGetter, VarAssign,
-        VarDeclaration,
+        BinaryOp, ForStatement, FunctionCall, IndexGetter, IndexSetter, PropertyGetter,
+        PropertySetter, VarAssign, VarDeclaration,
     },
     token::{Token, TokenKind},
 };
@@ -428,6 +428,7 @@ impl<'a> ByteCompiler<'a> {
             &AstData::IndexGetter(ref getter) => self.visit_index_getter(getter),
             &AstData::IndexSetter(ref setter) => self.visit_index_setter(setter),
             &AstData::PropertyGetter(ref getter) => self.visit_property_getter(getter),
+            &AstData::PropertySetter(ref setter) => self.visit_property_setter(setter),
             &AstData::Body(ref statements) => self.visit_body(statements, true),
             &AstData::This => self.visit_this(item),
             &AstData::Return(ref expr) => self.visit_return_statement(item, expr),
@@ -870,8 +871,25 @@ impl<'a> ByteCompiler<'a> {
         Ok(())
     }
 
-    fn visit_property_setter(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        todo!()
+    fn visit_property_setter(&mut self, setter: &PropertySetter) -> Result<(), SpruceErr> {
+        let PropertySetter { lhs, expression } = &setter;
+        let AstData::PropertyGetter(PropertyGetter { lhs, property }) = &lhs.data else { unreachable!() };
+
+        self.visit(expression)?;
+        self.visit(lhs)?;
+
+        let identifier = property
+            .token
+            .lexeme
+            .as_ref()
+            .unwrap()
+            .get_slice()
+            .to_string();
+
+        let identifier = self.get_string_or_insert(identifier);
+        self.func().code.push(ByteCode::PropertySet(identifier));
+
+        Ok(())
     }
 
     fn visit_switch_statement(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {

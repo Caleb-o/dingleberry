@@ -345,6 +345,13 @@ impl VM {
                     self.get_property(item, property)?;
                 }
 
+                ByteCode::PropertySet(index) => {
+                    let item = self.pop();
+                    let property = self.get_string(index);
+                    let value = self.pop();
+                    self.set_property(item, property, value)?;
+                }
+
                 ByteCode::Jump(index) => self.set_current_ip(index as usize),
 
                 ByteCode::IntoList(count) => {
@@ -652,6 +659,47 @@ impl VM {
                     }
 
                     self.push(value);
+                }
+
+                n => {
+                    return Err(SpruceErr::new(
+                        format!("Cannot access property on {n:?}"),
+                        SpruceErrData::VM,
+                    ))
+                }
+            }
+        } else {
+            return Err(SpruceErr::new(
+                format!("Cannot access property on {item:?}"),
+                SpruceErrData::VM,
+            ));
+        }
+
+        Ok(())
+    }
+
+    fn set_property(
+        &mut self,
+        item: Value,
+        property: String,
+        value: Value,
+    ) -> Result<(), SpruceErr> {
+        if let Value::Object(obj) = &item {
+            match &mut *obj.upgrade().unwrap().data.borrow_mut() {
+                &mut ObjectData::StructInstance(ref mut struct_) => {
+                    let struct_ = Rc::get_mut(struct_).unwrap();
+
+                    if struct_.values.contains_key(&property) {
+                        _ = struct_.values.insert(property, value);
+                    } else {
+                        return Err(SpruceErr::new(
+                            format!(
+                                "Unknown field '{property}' on struct '{}'",
+                                struct_.struct_name
+                            ),
+                            SpruceErrData::VM,
+                        ));
+                    }
                 }
 
                 n => {
