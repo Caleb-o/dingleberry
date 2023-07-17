@@ -1,0 +1,20 @@
+module Foo {
+    module Bar {
+        fn other_func {
+            print('Other func');
+        }
+    }
+
+    fn foo {
+        this.bar('Dave');
+    }
+
+    fn bar(name) {
+        print('Hello ', name, '!');
+        this.Bar.other_func();
+    }
+}
+
+call_fn(Foo.foo);
+
+fn call_fn(f) = f();
