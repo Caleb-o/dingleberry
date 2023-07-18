@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use crate::{ast::Ast, token::Token};
 
 #[derive(Debug, Clone)]
@@ -27,7 +29,7 @@ pub struct FunctionCall {
 
 #[derive(Debug, Clone)]
 pub struct Include {
-    pub root: Box<Ast>,
+    pub root: Rc<Box<Ast>>,
     pub module_name: Option<Token>,
 }
 

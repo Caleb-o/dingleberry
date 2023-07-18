@@ -78,7 +78,7 @@ impl Ast {
         })
     }
 
-    pub fn new_include(token: Token, root: Box<Ast>, module_name: Option<Token>) -> Box<Self> {
+    pub fn new_include(token: Token, root: Rc<Box<Ast>>, module_name: Option<Token>) -> Box<Self> {
         Box::new(Self {
             token,
             data: AstData::Include(Include { root, module_name }),

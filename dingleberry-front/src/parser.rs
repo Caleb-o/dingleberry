@@ -23,8 +23,15 @@ pub struct Parser {
     source: Rc<Source>,
     current: Token,
     had_error: bool,
-    included: HashMap<Box<PathBuf>, Box<Ast>>,
+    included: HashMap<Box<PathBuf>, Rc<Box<Ast>>>,
     current_path: Box<PathBuf>,
+}
+
+struct ParserState {
+    lexer: Lexer,
+    token: Token,
+    source: Rc<Source>,
+    last_path: Box<PathBuf>,
 }
 
 impl Parser {
@@ -35,7 +42,7 @@ impl Parser {
         let mut included = HashMap::new();
         let path = Path::new(&*source.file_path).canonicalize().unwrap();
         let current_path = Box::new(path.clone().parent().unwrap().to_path_buf());
-        included.insert(Box::new(path), Ast::new_empty(token.clone()));
+        included.insert(Box::new(path), Rc::new(Ast::new_empty(token.clone())));
 
         Self {
             lexer,
@@ -61,6 +68,47 @@ impl Parser {
         } else {
             program
         }
+    }
+
+    fn set_new_state(&mut self, file_path: &Box<PathBuf>) -> ParserState {
+        let last_path = self.current_path.clone();
+        self.current_path = Box::new(file_path.parent().unwrap().to_path_buf());
+
+        let content = fs::read_to_string(&**file_path).unwrap();
+        let source = Rc::new(Source::new(
+            file_path.as_os_str().to_str().unwrap().to_string(),
+            content,
+        ));
+
+        let last_source = self.source.clone();
+        let last_token = self.current.clone();
+        let last_lexer = self.lexer.clone();
+
+        // Do stuff
+        let mut lexer = Lexer::new(source);
+        self.current = lexer.next();
+        self.lexer = lexer;
+
+        ParserState {
+            lexer: last_lexer,
+            token: last_token,
+            source: last_source,
+            last_path,
+        }
+    }
+
+    fn restore_state(&mut self, state: ParserState) {
+        let ParserState {
+            lexer,
+            token,
+            source,
+            last_path,
+        } = state;
+
+        self.current_path = last_path;
+        self.source = source;
+        self.lexer = lexer;
+        self.current = token;
     }
 
     #[inline]
@@ -769,11 +817,6 @@ impl Parser {
         Ok(Ast::new_function(token, true, parameters, body))
     }
 
-    fn path_and_parent(path: Box<PathBuf>) -> (Box<PathBuf>, Box<PathBuf>) {
-        let parent_path = Box::new(path.clone().parent().unwrap().to_path_buf());
-        (path, parent_path)
-    }
-
     fn include(&mut self) -> Result<Box<Ast>, SpruceErr> {
         self.consume_here();
         match self.current.kind {
@@ -813,10 +856,7 @@ impl Parser {
                     ));
                 }
 
-                let boxed_path = Box::new(file_path.clone());
-
-                // FIXME: This is not really good, because a file might be loaded and parsed
-                // several times over. We should at least cache the root AST and return it again
+                let boxed_path = Box::new(file_path);
                 if let Some(included) = self.included.get(&boxed_path) {
                     return Ok(if module_name.is_some() {
                         Ast::new_include(token, included.clone(), module_name)
@@ -825,37 +865,15 @@ impl Parser {
                     });
                 }
 
-                let last_path = self.current_path.clone();
-                self.current_path = Box::new(file_path.parent().unwrap().to_path_buf());
+                let state = self.set_new_state(&boxed_path);
+                let root = Rc::new(self.run()?);
 
-                let content = fs::read_to_string(&*file_path).unwrap();
-                let source = Rc::new(Source::new(
-                    file_path.as_os_str().to_str().unwrap().to_string(),
-                    content,
-                ));
-
-                let old_source = self.source.clone();
-                let last_token = self.current.clone();
-                let last_lexer = self.lexer.clone();
-
-                // Do stuff
-                let mut lexer = Lexer::new(source);
-                self.current = lexer.next();
-                self.lexer = lexer;
-
-                let root = self.run()?;
-                let wrapper = Ast::new_wrapper(token.clone(), Rc::new(root.clone()));
-                self.included.insert(boxed_path.clone(), wrapper);
-
-                // Restore old path values
-
-                self.current_path = last_path;
-                self.source = old_source;
-                self.lexer = last_lexer;
-                self.current = last_token;
+                self.included.insert(boxed_path, root.clone());
+                self.restore_state(state);
 
                 Ok(Ast::new_include(token, root, module_name))
             }
+
             _ => Err(self.error(format!(
                 "Include expected string, but recieved '{}'",
                 self.source
