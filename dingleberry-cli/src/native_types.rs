@@ -12,7 +12,6 @@ pub fn register_native_objects(vm: &mut VM) {
     vm.build_module("Strings", false, |vm, module| {
         module.add_func(vm, "slice", Some(3), &strings_slice);
         module.add_func(vm, "slice_n", Some(3), &strings_slice_n);
-        module.add_func(vm, "append", Some(2), &strings_append);
         module.add_func(vm, "clone_no_intern", Some(1), &strings_clone_no_intern);
     })
     .unwrap();
@@ -93,25 +92,6 @@ fn strings_slice_n(vm: &mut VM, args: Vec<Value>) -> Value {
 
             let obj = vm.allocate_string(string[start..end].to_string(), true);
             Value::Object(obj)
-        }
-        _ => Value::None,
-    }
-}
-
-fn strings_append(_: &mut VM, args: Vec<Value>) -> Value {
-    match (&args[0], &args[1]) {
-        (Value::Object(lhs), Value::Object(rhs)) => {
-            let lhs = lhs.upgrade().unwrap();
-            let rhs = rhs.upgrade().unwrap();
-
-            match (&mut *lhs.data.borrow_mut(), &*rhs.data.borrow()) {
-                (&mut ObjectData::Str(ref mut lhs), &ObjectData::Str(ref rhs)) => {
-                    lhs.push_str(rhs);
-                }
-                _ => {}
-            }
-
-            Value::None
         }
         _ => Value::None,
     }
