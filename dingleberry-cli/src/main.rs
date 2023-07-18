@@ -1,6 +1,6 @@
 use std::{env, fs, path::Path, rc::Rc};
 
-use dingleberry_back::{byte_compiler::ByteCompiler, value::Value, vm::VM};
+use dingleberry_back::{byte_compiler::ByteCompiler, vm::VM};
 use dingleberry_front::{parser::Parser, source::Source};
 
 fn main() {
@@ -36,15 +36,6 @@ fn main() {
         println!("{e}");
         return;
     }
-
-    vm.build_struct("RustStruct", false, |vm, struct_| {
-        struct_.add_item("one_hundred", Value::Number(100.));
-        struct_.add_func(vm, "hello", None, &|_, _| {
-            println!("HELLO from Rust!");
-            Value::None
-        });
-    })
-    .unwrap();
 
     if let Err(e) = vm.call(maybe_func.unwrap(), 0) {
         println!("Error: {e}");
