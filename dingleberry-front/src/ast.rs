@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use crate::ast_inner::{
     BinaryOp, ForStatement, Function, FunctionCall, IfStatement, Include, IndexGetter, IndexSetter,
     LogicalOp, PropertyGetter, PropertySetter, SwitchCase, SwitchStatement, VarAssign,
@@ -14,6 +16,8 @@ pub struct Ast {
 
 #[derive(Debug, Clone)]
 pub enum AstData {
+    Wrapper(Rc<Box<Ast>>),
+
     Identifier,
     Literal,
     SymbolLiteral,
@@ -60,6 +64,13 @@ pub enum AstData {
 }
 
 impl Ast {
+    pub fn new_wrapper(token: Token, ast: Rc<Box<Ast>>) -> Box<Self> {
+        Box::new(Self {
+            token,
+            data: AstData::Wrapper(ast),
+        })
+    }
+
     pub fn new_empty(token: Token) -> Box<Self> {
         Box::new(Self {
             token,

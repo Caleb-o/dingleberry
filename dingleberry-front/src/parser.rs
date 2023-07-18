@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     fs,
     path::{Path, PathBuf},
     rc::Rc,
@@ -23,7 +23,7 @@ pub struct Parser {
     source: Rc<Source>,
     current: Token,
     had_error: bool,
-    included: HashSet<Box<PathBuf>>,
+    included: HashMap<Box<PathBuf>, Box<Ast>>,
     current_path: Box<PathBuf>,
 }
 
@@ -32,10 +32,10 @@ impl Parser {
         let mut lexer = Lexer::new(Rc::clone(&source));
         let token = lexer.next();
 
-        let mut included = HashSet::new();
+        let mut included = HashMap::new();
         let path = Path::new(&*source.file_path).canonicalize().unwrap();
         let current_path = Box::new(path.clone().parent().unwrap().to_path_buf());
-        included.insert(Box::new(path));
+        included.insert(Box::new(path), Ast::new_empty(token.clone()));
 
         Self {
             lexer,
@@ -769,6 +769,11 @@ impl Parser {
         Ok(Ast::new_function(token, true, parameters, body))
     }
 
+    fn path_and_parent(path: Box<PathBuf>) -> (Box<PathBuf>, Box<PathBuf>) {
+        let parent_path = Box::new(path.clone().parent().unwrap().to_path_buf());
+        (path, parent_path)
+    }
+
     fn include(&mut self) -> Result<Box<Ast>, SpruceErr> {
         self.consume_here();
         match self.current.kind {
@@ -812,11 +817,13 @@ impl Parser {
 
                 // FIXME: This is not really good, because a file might be loaded and parsed
                 // several times over. We should at least cache the root AST and return it again
-                if module_name.is_none() && self.included.contains(&boxed_path) {
-                    return Ok(Ast::new_empty(token));
+                if let Some(included) = self.included.get(&boxed_path) {
+                    return Ok(if module_name.is_some() {
+                        Ast::new_include(token, included.clone(), module_name)
+                    } else {
+                        Ast::new_empty(token)
+                    });
                 }
-
-                self.included.insert(boxed_path.clone());
 
                 let last_path = self.current_path.clone();
                 self.current_path = Box::new(file_path.parent().unwrap().to_path_buf());
@@ -837,6 +844,8 @@ impl Parser {
                 self.lexer = lexer;
 
                 let root = self.run()?;
+                let wrapper = Ast::new_wrapper(token.clone(), Rc::new(root.clone()));
+                self.included.insert(boxed_path.clone(), wrapper);
 
                 // Restore old path values
 

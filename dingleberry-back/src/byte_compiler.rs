@@ -454,6 +454,7 @@ impl<'a> ByteCompiler<'a> {
 
     fn visit(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
         match &item.data {
+            &AstData::Wrapper(ref inner) => self.visit_wrapper(inner),
             &AstData::Program(ref statements) => self.visit_program(statements),
             &AstData::Include(ref incl) => self.visit_include(incl),
             &AstData::Empty => self.visit_empty(item),
@@ -1060,6 +1061,11 @@ impl<'a> ByteCompiler<'a> {
         } else {
             self.visit(&incl.root)?;
         }
+        Ok(())
+    }
+
+    fn visit_wrapper(&mut self, inner: &Rc<Box<Ast>>) -> Result<(), SpruceErr> {
+        self.visit(&*inner)?;
         Ok(())
     }
 
