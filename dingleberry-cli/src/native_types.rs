@@ -1,6 +1,6 @@
 use std::fs::{self};
 
-use dingleberry_back::{value::Value, vm::VM};
+use dingleberry_back::{object::ObjectData, value::Value, vm::VM};
 
 pub fn register_native_objects(vm: &mut VM) {
     vm.build_module("File", false, |vm, module| {
@@ -8,9 +8,25 @@ pub fn register_native_objects(vm: &mut VM) {
         module.add_func(vm, "write_to", Some(2), &file_write_to_file);
     })
     .unwrap();
+
+    vm.build_module("Strings", false, |vm, module| {
+        module.add_func(vm, "slice", Some(3), &strings_slice);
+        module.add_func(vm, "slice_n", Some(3), &strings_slice_n);
+    })
+    .unwrap();
+
+    vm.build_module("List", false, |vm, module| {
+        module.add_func(vm, "append", Some(2), &list_append);
+        module.add_func(vm, "prepend", Some(2), &list_prepend);
+    })
+    .unwrap();
 }
 
-fn file_read_from_file(vm: &mut VM, args: &[Value]) -> Value {
+/*
+   === FILES
+*/
+
+fn file_read_from_file(vm: &mut VM, args: Vec<Value>) -> Value {
     if let Some(file_name) = args[0].get_as_string() {
         if let Ok(content) = fs::read_to_string(&file_name) {
             let obj = vm.allocate_string(content, false);
@@ -21,13 +37,78 @@ fn file_read_from_file(vm: &mut VM, args: &[Value]) -> Value {
     Value::None
 }
 
-fn file_write_to_file(_: &mut VM, args: &[Value]) -> Value {
+fn file_write_to_file(_: &mut VM, args: Vec<Value>) -> Value {
     match (args[0].get_as_string(), args[1].get_as_string()) {
         (Some(file_name), Some(content)) => {
             _ = fs::write(file_name, content);
+            Value::None
         }
-        _ => {}
+        _ => Value::None,
     }
+}
 
+/*
+   === STRINGS
+*/
+
+fn strings_slice(vm: &mut VM, args: Vec<Value>) -> Value {
+    match (
+        args[0].get_as_string(),
+        args[1].get_as_number(),
+        args[2].get_as_number(),
+    ) {
+        (Some(string), Some(start), Some(end)) => {
+            let (start, end) = if end < start {
+                (end, start)
+            } else {
+                (start, end)
+            };
+
+            let start = std::cmp::min(start as usize, string.len());
+            let end = std::cmp::min(end as usize, string.len());
+
+            let obj = vm.allocate_string(string[start..end].to_string(), true);
+            Value::Object(obj)
+        }
+        _ => Value::None,
+    }
+}
+
+fn strings_slice_n(vm: &mut VM, args: Vec<Value>) -> Value {
+    match (
+        args[0].get_as_string(),
+        args[1].get_as_number(),
+        args[2].get_as_number(),
+    ) {
+        (Some(string), Some(start), Some(count)) => {
+            let start = std::cmp::min(start as usize, string.len());
+            let end = std::cmp::min(start as usize + count as usize, string.len());
+
+            let obj = vm.allocate_string(string[start..end].to_string(), true);
+            Value::Object(obj)
+        }
+        _ => Value::None,
+    }
+}
+
+/*
+   === LIST
+*/
+
+fn list_append(_: &mut VM, mut args: Vec<Value>) -> Value {
+    if let Some(obj) = args[0].get_as_object() {
+        if let ObjectData::List(l) = &mut *obj.upgrade().unwrap().data.borrow_mut() {
+            l.push(args.pop().unwrap());
+        }
+    }
+    Value::None
+}
+
+fn list_prepend(_: &mut VM, mut args: Vec<Value>) -> Value {
+    if let Some(obj) = args[0].get_as_object() {
+        if let ObjectData::List(l) = &mut *obj.upgrade().unwrap().data.borrow_mut() {
+            l.insert(0, args.pop().unwrap());
+        }
+    }
     Value::None
 }

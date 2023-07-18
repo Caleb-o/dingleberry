@@ -136,6 +136,7 @@ impl GarbageCollector {
             ObjectData::Module(m) => std::mem::size_of::<Value>() * m.items.len(),
             ObjectData::StructDef(s) => std::mem::size_of::<Value>() * s.items.len(),
             ObjectData::StructInstance(s) => std::mem::size_of::<Value>() * s.values.len(),
+            _ => 0,
         } + std::mem::size_of::<ObjectData>();
 
         self.bytes_allocated += to_alloc_bytes;

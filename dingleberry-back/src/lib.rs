@@ -10,7 +10,7 @@ pub mod object;
 pub mod value;
 pub mod vm;
 
-fn nt_print(_: &mut VM, args: &[Value]) -> Value {
+fn nt_print(_: &mut VM, args: Vec<Value>) -> Value {
     for item in args {
         print!("{item}");
     }
@@ -19,7 +19,7 @@ fn nt_print(_: &mut VM, args: &[Value]) -> Value {
     Value::None
 }
 
-fn nt_len(_: &mut VM, args: &[Value]) -> Value {
+fn nt_len(_: &mut VM, args: Vec<Value>) -> Value {
     let value = match &args[0] {
         Value::None => 0,
         Value::Number(_) => 0,
@@ -31,15 +31,15 @@ fn nt_len(_: &mut VM, args: &[Value]) -> Value {
             ObjectData::Function(f) => f.arg_count as usize,
             ObjectData::NativeFunction(f) => f.arg_count.unwrap_or_default() as usize,
             ObjectData::Module(m) => m.items.len(),
-            ObjectData::StructDef(_) => 0,
-            ObjectData::StructInstance(_) => 0,
+
+            _ => 0,
         },
     } as f32;
 
     Value::Number(value)
 }
 
-fn nt_fields_of(vm: &mut VM, args: &[Value]) -> Value {
+fn nt_fields_of(vm: &mut VM, args: Vec<Value>) -> Value {
     let mut fields = Vec::new();
 
     match &args[0] {
@@ -90,7 +90,7 @@ fn nt_fields_of(vm: &mut VM, args: &[Value]) -> Value {
     Value::Object(fields)
 }
 
-fn nt_freeze(vm: &mut VM, args: &[Value]) -> Value {
+fn nt_freeze(vm: &mut VM, args: Vec<Value>) -> Value {
     match &args[0] {
         Value::Object(obj) => match &*obj.upgrade().unwrap().data.borrow() {
             ObjectData::List(l) => Value::Object(vm.allocate(ObjectData::Tuple(l.clone().into()))),
@@ -101,12 +101,12 @@ fn nt_freeze(vm: &mut VM, args: &[Value]) -> Value {
     }
 }
 
-fn nt_dbg_stack(vm: &mut VM, _: &[Value]) -> Value {
+fn nt_dbg_stack(vm: &mut VM, _: Vec<Value>) -> Value {
     println!("Stack {:?}", vm.stack);
     Value::None
 }
 
-fn nt_dbg_globals(vm: &mut VM, _: &[Value]) -> Value {
+fn nt_dbg_globals(vm: &mut VM, _: Vec<Value>) -> Value {
     println!("Globals {:?}", vm.globals.values());
     Value::None
 }

@@ -119,7 +119,11 @@ impl PartialEq for ObjectData {
 
 impl PartialOrd for ObjectData {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        todo!()
+        match (self, other) {
+            (ObjectData::Str(l), ObjectData::Str(r)) => l.partial_cmp(r),
+            (ObjectData::Function(l), ObjectData::Function(r)) => l.partial_cmp(r),
+            _ => None,
+        }
     }
 }
 
@@ -188,6 +192,8 @@ impl Display for ObjectData {
             Self::StructDef(s) => write!(f, "struct_def<{}>", s.identifier),
 
             Self::StructInstance(s) => write!(f, "struct_inst<{}>", s.struct_name),
+
+            Self::NativeObject(o) => write!(f, "native_object<{o:?}>"),
         }
     }
 }

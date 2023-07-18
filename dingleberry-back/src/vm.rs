@@ -257,7 +257,7 @@ impl VM {
                     .stack
                     .drain((self.stack.len() - arg_count)..)
                     .collect::<Vec<Value>>();
-                let value = (func.function)(self, &args);
+                let value = (func.function)(self, args);
                 self.stack.push(value);
                 return Ok(());
             }

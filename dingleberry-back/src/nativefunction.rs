@@ -6,7 +6,7 @@ use crate::{
     vm::VM,
 };
 
-pub type NativeFn = &'static dyn Fn(&mut VM, &[Value]) -> Value;
+pub type NativeFn = &'static dyn Fn(&mut VM, Vec<Value>) -> Value;
 
 #[derive(Clone)]
 pub struct NativeFunction {

@@ -44,6 +44,21 @@ impl Value {
         std::mem::discriminant(self) == std::mem::discriminant(other)
     }
 
+    pub fn get_as_number(&self) -> Option<f32> {
+        if let Value::Number(n) = self {
+            return Some(*n);
+        }
+
+        None
+    }
+
+    pub fn get_as_object(&self) -> Option<Weak<Object>> {
+        if let Value::Object(obj) = &self {
+            return Some(obj.clone());
+        }
+        None
+    }
+
     pub fn get_as_string(&self) -> Option<String> {
         if let Value::Object(obj) = &self {
             match &*obj.upgrade().unwrap().data.borrow() {
