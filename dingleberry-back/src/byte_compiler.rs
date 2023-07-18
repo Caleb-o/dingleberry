@@ -459,20 +459,30 @@ impl<'a> ByteCompiler<'a> {
             &AstData::Program(ref statements) => self.visit_program(statements),
             &AstData::Include(ref incl) => self.visit_include(incl),
             &AstData::Empty => self.visit_empty(item),
+
+            &AstData::FieldVarDeclarations(ref decls) => self.visit_field_var_declarations(decls),
+            &AstData::FieldVarDeclaration => self.visit_field_var_declaration(item),
+
             &AstData::VarDeclarations(ref decls) => self.visit_var_declarations(decls),
             &AstData::VarDeclaration(ref decl) => self.visit_var_declaration(item, decl),
             &AstData::VarAssign(ref assign) => self.visit_var_assign(item, assign),
+
             &AstData::Function(ref func) => self.visit_function(item, func),
+            &AstData::FunctionCall(ref fncall) => self.visit_function_call(item, fncall),
+
             &AstData::BinaryOp(ref bin) => self.visit_binary_op(item, bin),
             &AstData::UnaryOp(ref rhs) => self.visit_unary_op(rhs),
             &AstData::LogicalOp(ref logic) => self.visit_logical_op(item, logic),
-            &AstData::FunctionCall(ref fncall) => self.visit_function_call(item, fncall),
+
             &AstData::ForStatement(ref fstmt) => self.visit_for_statement(fstmt),
             &AstData::LoopStatement(ref body) => self.visit_loop_statement(body),
+
             &AstData::IndexGetter(ref getter) => self.visit_index_getter(getter),
             &AstData::IndexSetter(ref setter) => self.visit_index_setter(setter),
+
             &AstData::PropertyGetter(ref getter) => self.visit_property_getter(getter),
             &AstData::PropertySetter(ref setter) => self.visit_property_setter(setter),
+
             &AstData::Body(ref statements) => self.visit_body(statements, true),
             &AstData::IfStatement(ref statement) => self.visit_if_statement(statement),
             &AstData::This => self.visit_this(item),
@@ -810,6 +820,23 @@ impl<'a> ByteCompiler<'a> {
         for item in decls {
             let AstData::VarDeclaration(ref decl) = &item.data else { unreachable!() };
             self.visit_var_declaration(item, decl)?;
+        }
+
+        Ok(())
+    }
+
+    fn visit_field_var_declaration(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
+        let field_name = item.token.lexeme.as_ref().unwrap().get_slice();
+        self.add_item_to_struct(field_name.to_string(), Value::None);
+
+        self.symbol_table.add_symbol(&item.token, false, false)?;
+
+        Ok(())
+    }
+
+    fn visit_field_var_declarations(&mut self, decls: &Vec<Box<Ast>>) -> Result<(), SpruceErr> {
+        for item in decls {
+            self.visit_field_var_declaration(item)?;
         }
 
         Ok(())

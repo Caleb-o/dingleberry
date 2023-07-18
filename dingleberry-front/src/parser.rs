@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     fs,
     path::{Path, PathBuf},
     rc::Rc,
@@ -573,7 +573,7 @@ impl Parser {
                 TokenKind::Struct => self.struct_statement()?,
                 TokenKind::Function => self.function()?,
                 TokenKind::Let => {
-                    let let_decl = self.let_declaration()?;
+                    let let_decl = self.field_let_declaration()?;
                     self.consume(TokenKind::SemiColon, "Expect semicolon after struct let member")?;
                     let_decl
                 },
@@ -905,7 +905,7 @@ impl Parser {
         Ok(Ast::new_function(identifier, false, parameters, body))
     }
 
-    fn collect_var_decl(&mut self) -> Result<Box<Ast>, SpruceErr> {
+    fn collect_let_decl(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let is_mutable = if self.current.kind == TokenKind::Mutable {
             self.consume_here();
             true
@@ -926,14 +926,34 @@ impl Parser {
         Ok(Ast::new_var_decl(identifier, is_mutable, expr))
     }
 
-    fn let_declaration(&mut self) -> Result<Box<Ast>, SpruceErr> {
+    fn collect_field_let_decl(&mut self) -> Result<Box<Ast>, SpruceErr> {
+        let identifier = self.get_current();
+        self.consume(TokenKind::Identifier, "Expected identifier after 'let'")?;
+
+        Ok(Ast::new_field_var_decl(identifier))
+    }
+
+    fn field_let_declaration(&mut self) -> Result<Box<Ast>, SpruceErr> {
         self.consume_here();
 
-        let mut decls = vec![self.collect_var_decl()?];
+        let mut decls = vec![self.collect_field_let_decl()?];
 
         while self.current.kind == TokenKind::Comma {
             self.consume_here();
-            decls.push(self.collect_var_decl()?);
+            decls.push(self.collect_field_let_decl()?);
+        }
+
+        Ok(Ast::new_field_var_decls(decls))
+    }
+
+    fn let_declaration(&mut self) -> Result<Box<Ast>, SpruceErr> {
+        self.consume_here();
+
+        let mut decls = vec![self.collect_let_decl()?];
+
+        while self.current.kind == TokenKind::Comma {
+            self.consume_here();
+            decls.push(self.collect_let_decl()?);
         }
 
         Ok(Ast::new_var_decls(decls))
@@ -968,7 +988,7 @@ impl Parser {
                 }
                 TokenKind::Let => {
                     statements.push(self.let_declaration()?);
-                    self.consume(TokenKind::SemiColon, "Expect ';' after variable statement")?;
+                    self.consume(TokenKind::SemiColon, "Expect ';' after let statement")?;
                 }
 
                 _ => statements.push(self.statement()?),
