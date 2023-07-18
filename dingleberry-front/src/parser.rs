@@ -640,6 +640,13 @@ impl Parser {
         ))
     }
 
+    fn loop_statement(&mut self) -> Result<Box<Ast>, SpruceErr> {
+        let token = self.get_current();
+        self.consume_here();
+
+        Ok(Ast::new_loop_statement(token, self.body()?))
+    }
+
     fn switch_case(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let token = self.get_current();
         let case = if self.current.kind == TokenKind::Else {
@@ -704,6 +711,7 @@ impl Parser {
 
             TokenKind::If => self.if_expression_statement(false)?,
             TokenKind::For => self.for_statement()?,
+            TokenKind::Loop => self.loop_statement()?,
             TokenKind::Switch => self.switch_statement()?,
             TokenKind::Let => self.let_declaration()?,
             TokenKind::Return => self.return_statement()?,
@@ -725,6 +733,7 @@ impl Parser {
             | AstData::Function { .. }
             | AstData::IfStatement { .. }
             | AstData::Module(_)
+            | AstData::LoopStatement(_)
             | AstData::ForStatement { .. } => {}
 
             _ => self.consume(TokenKind::SemiColon, "Expect ';' after statement")?,
@@ -943,6 +952,8 @@ impl Parser {
                 TokenKind::Module => statements.push(self.module_statement()?),
                 TokenKind::Struct => statements.push(self.struct_statement()?),
                 TokenKind::If => statements.push(self.if_expression_statement(false)?),
+                TokenKind::For => statements.push(self.for_statement()?),
+                TokenKind::Loop => statements.push(self.loop_statement()?),
                 TokenKind::Function => {
                     let func = self.function()?;
                     if let AstData::Function(Function { body, .. }) = &func.data {

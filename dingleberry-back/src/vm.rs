@@ -115,12 +115,6 @@ impl VM {
         });
     }
 
-    #[inline]
-    pub fn collect_all(&mut self) {
-        self.gc.young.sweep();
-        self.gc.old.sweep();
-    }
-
     pub fn call(&mut self, maybe_function: Value, arg_count: usize) -> Result<(), SpruceErr> {
         if !matches!(maybe_function, Value::Object(_)) {
             return Err(SpruceErr::new(
@@ -232,6 +226,8 @@ impl VM {
             println!("{e}");
             self.dump_stack_trace();
         }
+
+        self.gc.write_stats();
     }
 
     fn dump_stack_trace(&self) {
@@ -286,6 +282,20 @@ impl VM {
                 | ByteCode::And => {
                     let (lhs, rhs) = self.maybe_get_top_two()?;
                     self.logical_op(instruction, lhs, rhs)?;
+                }
+
+                ByteCode::Negate => {
+                    let value = self.pop();
+                    self.push(match value {
+                        Value::Number(n) => Value::Number(-n),
+                        Value::Boolean(b) => Value::Boolean(!b),
+                        v => {
+                            return Err(SpruceErr::new(
+                                format!("Cannot negate type {v:?}"),
+                                SpruceErrData::VM,
+                            ))
+                        }
+                    });
                 }
 
                 ByteCode::DefineGlobal(index) => {
@@ -847,11 +857,6 @@ impl VM {
     #[inline]
     fn set_current_ip(&mut self, ip: usize) {
         self.call_stack.last_mut().unwrap().ip = ip;
-    }
-
-    #[inline]
-    fn offset_ip(&mut self, ip: usize) {
-        self.call_stack.last_mut().unwrap().ip += ip;
     }
 
     #[inline]

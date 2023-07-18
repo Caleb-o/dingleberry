@@ -16,8 +16,6 @@ pub struct Ast {
 
 #[derive(Debug, Clone)]
 pub enum AstData {
-    Wrapper(Rc<Box<Ast>>),
-
     Identifier,
     Literal,
     SymbolLiteral,
@@ -42,6 +40,7 @@ pub enum AstData {
 
     IfStatement(IfStatement),
     ForStatement(ForStatement),
+    LoopStatement(Box<Ast>),
 
     IndexGetter(IndexGetter),
     IndexSetter(IndexSetter),
@@ -64,13 +63,6 @@ pub enum AstData {
 }
 
 impl Ast {
-    pub fn new_wrapper(token: Token, ast: Rc<Box<Ast>>) -> Box<Self> {
-        Box::new(Self {
-            token,
-            data: AstData::Wrapper(ast),
-        })
-    }
-
     pub fn new_empty(token: Token) -> Box<Self> {
         Box::new(Self {
             token,
@@ -270,6 +262,13 @@ impl Ast {
                 expression,
                 body,
             }),
+        })
+    }
+
+    pub fn new_loop_statement(token: Token, body: Box<Ast>) -> Box<Self> {
+        Box::new(Self {
+            token,
+            data: AstData::LoopStatement(body),
         })
     }
 

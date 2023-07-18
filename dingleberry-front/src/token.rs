@@ -59,6 +59,7 @@ pub enum TokenKind {
     Module,
     Struct,
     This,
+    Loop,
 
     EndOfFile,
     Error,

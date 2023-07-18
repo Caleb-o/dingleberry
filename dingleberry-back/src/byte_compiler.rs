@@ -403,6 +403,8 @@ impl<'a> ByteCompiler<'a> {
         let func = self.current_func.take().unwrap();
         self.current_func = last_fn;
 
+        // println!("Function code {:?}", func.code);
+
         if anonymous || self.current_mod.is_some() || self.current_struct.is_some() {
             let obj = self.vm.allocate(ObjectData::Function(func));
             self.vm.constants.push(Value::Object(obj));
@@ -454,7 +456,6 @@ impl<'a> ByteCompiler<'a> {
 
     fn visit(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
         match &item.data {
-            &AstData::Wrapper(ref inner) => self.visit_wrapper(inner),
             &AstData::Program(ref statements) => self.visit_program(statements),
             &AstData::Include(ref incl) => self.visit_include(incl),
             &AstData::Empty => self.visit_empty(item),
@@ -467,6 +468,7 @@ impl<'a> ByteCompiler<'a> {
             &AstData::LogicalOp(ref logic) => self.visit_logical_op(item, logic),
             &AstData::FunctionCall(ref fncall) => self.visit_function_call(item, fncall),
             &AstData::ForStatement(ref fstmt) => self.visit_for_statement(fstmt),
+            &AstData::LoopStatement(ref body) => self.visit_loop_statement(body),
             &AstData::IndexGetter(ref getter) => self.visit_index_getter(getter),
             &AstData::IndexSetter(ref setter) => self.visit_index_setter(setter),
             &AstData::PropertyGetter(ref getter) => self.visit_property_getter(getter),
@@ -592,13 +594,17 @@ impl<'a> ByteCompiler<'a> {
     }
 
     fn visit_expression_statement(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        let AstData::ExpressionStatement(_, expr) = &item.data else { unreachable!() };
+        let AstData::ExpressionStatement(is_stmt, expr) = &item.data else { unreachable!() };
 
         self.visit(expr)?;
 
-        match expr.data {
-            AstData::Body(_) => {}
-            _ => self.func().code.push(ByteCode::Pop),
+        if *is_stmt {
+            match expr.data {
+                AstData::Body(_) => {}
+                _ => self.func().code.push(ByteCode::Pop),
+            }
+        } else {
+            self.func().code.push(ByteCode::Return);
         }
 
         Ok(())
@@ -679,7 +685,9 @@ impl<'a> ByteCompiler<'a> {
             None
         };
 
-        self.add_symbol(&item.token, false, false)?;
+        if !anonymous {
+            self.add_symbol(&item.token, false, false)?;
+        }
 
         self.open_function(
             identifier.clone(),
@@ -713,7 +721,7 @@ impl<'a> ByteCompiler<'a> {
                 } else if self.container_ctx == ContainerContext::Struct {
                     self.add_item_to_struct(identifier.unwrap().clone(), func.clone());
                 }
-            } else if *anonymous {
+            } else {
                 self.func().code.push(ByteCode::ConstantByte(index as u8));
             }
         }
@@ -836,7 +844,7 @@ impl<'a> ByteCompiler<'a> {
                 ));
             }
 
-            self.func().code.push(if depth == 1 {
+            self.func().code.push(if depth == 0 {
                 ByteCode::SetGlobal(index)
             } else {
                 ByteCode::SetLocal(index as u8)
@@ -913,6 +921,14 @@ impl<'a> ByteCompiler<'a> {
         } else {
             todo!()
         }
+
+        Ok(())
+    }
+
+    fn visit_loop_statement(&mut self, inner: &Box<Ast>) -> Result<(), SpruceErr> {
+        let before_loop = self.func().code.len();
+        self.visit(inner)?;
+        self.func().code.push(ByteCode::Jump(before_loop as u16));
 
         Ok(())
     }
@@ -1024,18 +1040,39 @@ impl<'a> ByteCompiler<'a> {
             self.symbol_table.new_scope();
         }
 
-        for stmt in statements {
+        for (idx, stmt) in statements.iter().enumerate() {
             self.visit(stmt)?;
+
+            if let AstData::ExpressionStatement(is_stmt, _) = &stmt.data {
+                if !is_stmt && idx != statements.len() - 1 {
+                    let file_path = stmt
+                        .token
+                        .lexeme
+                        .as_ref()
+                        .map(|span| (*span.source.file_path).clone());
+
+                    return Err(SpruceErr::new(
+                        "Cannot use bare expression unless it is the last expression in the body"
+                            .into(),
+                        SpruceErrData::Compiler {
+                            file_path,
+                            line: stmt.token.line,
+                            column: stmt.token.column,
+                        },
+                    ));
+                }
+            }
         }
 
-        let locals = *self.symbol_table.in_depth.last().unwrap() as u8;
-        if locals > 0 {
-            self.func().code.push(if locals > 1 {
-                ByteCode::PopN(locals)
-            } else {
-                ByteCode::Pop
-            });
-        }
+        // FIXME
+        // let locals = *self.symbol_table.in_depth.last().unwrap() as u8;
+        // if locals > 0 {
+        //     self.func().code.push(if locals > 1 {
+        //         ByteCode::PopN(locals)
+        //     } else {
+        //         ByteCode::Pop
+        //     });
+        // }
 
         if new_scope {
             self.symbol_table.close_scope();
@@ -1061,11 +1098,6 @@ impl<'a> ByteCompiler<'a> {
         } else {
             self.visit(&incl.root)?;
         }
-        Ok(())
-    }
-
-    fn visit_wrapper(&mut self, inner: &Rc<Box<Ast>>) -> Result<(), SpruceErr> {
-        self.visit(&*inner)?;
         Ok(())
     }
 

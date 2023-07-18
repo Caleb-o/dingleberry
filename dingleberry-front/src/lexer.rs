@@ -180,7 +180,11 @@ impl Lexer {
                 len,
                 &[("truct", TokenKind::Struct), ("witch", TokenKind::Switch)],
             ),
-            'l' => self.check_if_matches(start, len, &[("et", TokenKind::Let)]),
+            'l' => self.check_if_matches(
+                start,
+                len,
+                &[("et", TokenKind::Let), ("oop", TokenKind::Loop)],
+            ),
             'm' => self.check_if_matches(
                 start,
                 len,

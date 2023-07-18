@@ -3,12 +3,20 @@
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 
+use std::fmt::Display;
 use std::rc::{Rc, Weak};
 
 use crate::byte_compiler::Function;
 use crate::nativefunction::NativeFunction;
 use crate::object::{Object, ObjectData};
 use crate::value::Value;
+
+/// Total initial bytes before a collection occurs
+const INITIAL_COLLECTION_SIZE: usize = 1024 * 1024;
+/// Threshold multiplier applied to next_sweep size
+const SWEEP_FACTOR: usize = 2;
+/// Amount of collections before managing the old generation
+const GENERATION_SWEEP: u8 = 3;
 
 /// Generation contains objects
 /// There is nothing unique in a generation itself,
@@ -24,7 +32,7 @@ impl Generation {
         }
     }
 
-    pub fn sweep(&mut self) {
+    pub fn sweep(&mut self, stats: &mut GarbageStats) {
         self.objects.retain(|obj| {
             let is_marked = obj.marked.get();
             if cfg!(Debug) && !is_marked {
@@ -35,6 +43,10 @@ impl Generation {
                     obj.data,
                     Rc::weak_count(&obj),
                 );
+            }
+
+            if !is_marked {
+                stats.frees += 1;
             }
 
             // Reset mark
@@ -55,6 +67,34 @@ impl Generation {
     }
 }
 
+pub struct GarbageStats {
+    allocs: usize,
+    frees: usize,
+    collections: usize,
+    bytes_allocated: usize,
+}
+
+impl GarbageStats {
+    fn new() -> Self {
+        GarbageStats {
+            allocs: 0,
+            frees: 0,
+            collections: 0,
+            bytes_allocated: 0,
+        }
+    }
+}
+
+impl Display for GarbageStats {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "[Allocs {} | Frees {} | Collections {} | Bytes Allocated {}]",
+            self.allocs, self.frees, self.collections, self.bytes_allocated
+        )
+    }
+}
+
 pub struct GarbageCollector {
     pub young: Generation,
     pub old: Generation,
@@ -62,14 +102,9 @@ pub struct GarbageCollector {
     pub bytes_allocated: usize,
     next_sweep: usize,
     generation_counter: u8,
-}
 
-/// Total initial bytes before a collection occurs
-const INITIAL_COLLECTION_SIZE: usize = 1024 * 1024;
-/// Threshold multiplier applied to next_sweep size
-const SWEEP_FACTOR: usize = 2;
-/// Amount of collections before managing the old generation
-const GENERATION_SWEEP: u8 = 3;
+    stats: GarbageStats,
+}
 
 /// An object that can be threaded through the garbage collector,
 /// as multiple parameters would be gross
@@ -87,7 +122,14 @@ impl GarbageCollector {
             bytes_allocated: 0,
             next_sweep: INITIAL_COLLECTION_SIZE,
             generation_counter: 0,
+
+            stats: GarbageStats::new(),
         }
+    }
+
+    #[inline]
+    pub fn write_stats(&self) {
+        println!("{}", self.stats);
     }
 
     pub fn allocate<'a>(&mut self, data: ObjectData, roots: Roots<'a>) -> Weak<Object> {
@@ -104,6 +146,9 @@ impl GarbageCollector {
         } + std::mem::size_of::<ObjectData>();
 
         self.bytes_allocated += to_alloc_bytes;
+
+        self.stats.allocs += 1;
+        self.stats.bytes_allocated += to_alloc_bytes;
 
         if cfg!(Debug) {
             println!(
@@ -164,11 +209,11 @@ impl GarbageCollector {
     }
 
     fn sweep(&mut self) {
-        self.young.sweep();
+        self.young.sweep(&mut self.stats);
 
         self.generation_counter += 1;
         if self.generation_counter >= GENERATION_SWEEP {
-            self.old.sweep();
+            self.old.sweep(&mut self.stats);
             self.generation_counter = 0;
         }
 
@@ -207,6 +252,8 @@ impl GarbageCollector {
         if cfg!(Debug) {
             println!("Collecting garbage");
         }
+        self.stats.collections += 1;
+
         self.mark_roots(roots);
         self.sweep();
     }
@@ -243,7 +290,6 @@ mod tests {
         assert_eq!(vm.gc.old.objects.len(), 1);
 
         vm.pop();
-        vm.collect_all();
 
         assert_eq!(vm.gc.old.objects.len(), 0);
     }
