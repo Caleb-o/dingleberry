@@ -1,4 +1,8 @@
-use std::{collections::HashMap, hash::Hash, rc::Rc};
+use std::{
+    collections::{HashMap, HashSet},
+    hash::Hash,
+    rc::Rc,
+};
 
 use dingleberry_front::{
     ast::{Ast, AstData},
@@ -357,6 +361,7 @@ impl<'a> ByteCompiler<'a> {
 
         self.current_struct = Some(StructDef {
             identifier,
+            init_items: None,
             items: HashMap::new(),
         });
     }
@@ -488,7 +493,7 @@ impl<'a> ByteCompiler<'a> {
             &AstData::This => self.visit_this(item),
             &AstData::Return(ref expr) => self.visit_return_statement(item, expr),
             &AstData::Module(ref items) => self.visit_module(item, items),
-            &AstData::StructDef(ref items) => self.visit_struct_def(item, items),
+            &AstData::StructDef(ref struct_def) => self.visit_struct_def(item, struct_def),
             &AstData::Identifier => self.visit_identifier(item),
             &AstData::Literal => self.visit_literal(item),
             &AstData::ArrayLiteral(_) => self.visit_array_literal(item),
@@ -1172,8 +1177,13 @@ impl<'a> ByteCompiler<'a> {
     fn visit_struct_def(
         &mut self,
         item: &Box<Ast>,
-        items: &Vec<Box<Ast>>,
+        struct_def: &dingleberry_front::ast_inner::StructDef,
     ) -> Result<(), SpruceErr> {
+        let dingleberry_front::ast_inner::StructDef {
+            init_fields,
+            declarations,
+        } = struct_def;
+
         let last_ctx = self.container_ctx;
         self.container_ctx = ContainerContext::Struct;
 
@@ -1182,8 +1192,47 @@ impl<'a> ByteCompiler<'a> {
 
         self.open_struct(identifier.clone());
 
-        for item in items {
+        for item in declarations {
             self.visit(item)?;
+        }
+
+        if let Some(init_fields) = init_fields {
+            let mut current_fields = HashSet::new();
+
+            for field in init_fields {
+                let struct_items = &self.current_struct.as_ref().unwrap().items;
+                let identifier = field.lexeme.as_ref().unwrap().get_slice();
+
+                let file_path = field
+                    .lexeme
+                    .as_ref()
+                    .map(|span| (*span.source.file_path).clone());
+
+                if !current_fields.insert(identifier) {
+                    return Err(SpruceErr::new(
+                        format!("Struct '{identifier}' already contains init field '{identifier}'"),
+                        SpruceErrData::Compiler {
+                            file_path,
+                            line: field.line,
+                            column: field.column,
+                        },
+                    ));
+                }
+
+                if !struct_items.contains_key(identifier) {
+                    return Err(SpruceErr::new(
+                        format!("Struct '{identifier}' does not contain field '{identifier}' to initialise"),
+                        SpruceErrData::Compiler {
+                            file_path,
+                            line: field.line,
+                            column: field.column,
+                        },
+                    ));
+                }
+            }
+
+            self.current_struct.as_mut().unwrap().init_items =
+                Some(current_fields.into_iter().map(|s| s.to_string()).collect());
         }
 
         let struct_idx = self.close_struct(last_struct);

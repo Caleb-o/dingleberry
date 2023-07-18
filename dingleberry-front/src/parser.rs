@@ -564,6 +564,31 @@ impl Parser {
 
         let identifier = self.get_current();
         self.consume(TokenKind::Identifier, "Expect identifier after 'struct'")?;
+
+        let init_fields = if self.current.kind == TokenKind::LParen {
+            self.consume_here();
+            let mut fields = vec![self.get_current()];
+            self.consume(
+                TokenKind::Identifier,
+                "Expected identifier in struct init fields",
+            )?;
+
+            while self.current.kind == TokenKind::Comma {
+                self.consume_here();
+                fields.push(self.get_current());
+                self.consume(
+                    TokenKind::Identifier,
+                    "Expected identifier in struct init fields",
+                )?;
+            }
+
+            self.consume(TokenKind::RParen, "Expect ')' after struct init fields")?;
+
+            Some(fields)
+        } else {
+            None
+        };
+
         self.consume(TokenKind::LCurly, "Expect '{' after struct identifier")?;
 
         let mut statements = Vec::new();
@@ -587,7 +612,7 @@ impl Parser {
         }
 
         self.consume(TokenKind::RCurly, "Expect '}' after struct body")?;
-        Ok(Ast::new_struct_def(identifier, statements))
+        Ok(Ast::new_struct_def(identifier, init_fields, statements))
     }
 
     fn if_expression_statement(&mut self, force_else: bool) -> Result<Box<Ast>, SpruceErr> {

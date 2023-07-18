@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use crate::ast_inner::{
     BinaryOp, ForStatement, Function, FunctionCall, IfStatement, Include, IndexGetter, IndexSetter,
-    LogicalOp, PropertyGetter, PropertySetter, SwitchCase, SwitchStatement, VarAssign,
+    LogicalOp, PropertyGetter, PropertySetter, StructDef, SwitchCase, SwitchStatement, VarAssign,
     VarAssignEqual, VarDeclaration,
 };
 
@@ -61,7 +61,7 @@ pub enum AstData {
     Body(Vec<Box<Ast>>),
     Include(Include),
     Module(Vec<Box<Ast>>),
-    StructDef(Vec<Box<Ast>>),
+    StructDef(StructDef),
     Program(Vec<Box<Ast>>),
     Empty,
 }
@@ -88,10 +88,17 @@ impl Ast {
         })
     }
 
-    pub fn new_struct_def(token: Token, body: Vec<Box<Ast>>) -> Box<Self> {
+    pub fn new_struct_def(
+        token: Token,
+        init_fields: Option<Vec<Token>>,
+        declarations: Vec<Box<Ast>>,
+    ) -> Box<Self> {
         Box::new(Self {
             token,
-            data: AstData::StructDef(body),
+            data: AstData::StructDef(StructDef {
+                init_fields,
+                declarations,
+            }),
         })
     }
 

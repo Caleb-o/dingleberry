@@ -102,3 +102,9 @@ pub struct SwitchCase {
     pub case: Option<Box<Ast>>,
     pub body: Box<Ast>,
 }
+
+#[derive(Debug, Clone)]
+pub struct StructDef {
+    pub init_fields: Option<Vec<Token>>,
+    pub declarations: Vec<Box<Ast>>,
+}

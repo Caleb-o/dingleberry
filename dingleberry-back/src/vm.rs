@@ -140,7 +140,10 @@ impl VM {
 
             ObjectData::StructDef(struct_) => {
                 // TODO: Check for constructor
-                (struct_.identifier.clone(), Some(0))
+                (
+                    struct_.identifier.clone(),
+                    struct_.init_items.as_ref().map(|items| items.len() as u8),
+                )
             }
 
             // TODO: Consider a module constructor
@@ -182,7 +185,14 @@ impl VM {
             }
 
             ObjectData::StructDef(struct_) => {
-                let values = struct_.items.clone();
+                let mut values = struct_.items.clone();
+
+                if let Some(init_fields) = &struct_.init_items {
+                    for field in init_fields.iter().rev() {
+                        values.insert(field.clone(), self.pop());
+                    }
+                }
+
                 let struct_ = self.allocate(ObjectData::StructInstance(Rc::new(StructInstance {
                     struct_name: struct_.identifier.clone(),
                     values,
