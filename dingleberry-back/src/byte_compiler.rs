@@ -767,6 +767,17 @@ impl<'a> ByteCompiler<'a> {
 
         self.visit(lhs)?;
 
+        let literal_call = match &lhs.data {
+            AstData::PropertyGetter(PropertyGetter { lhs, .. }) => {
+                if let AstData::Literal = &lhs.data {
+                    1
+                } else {
+                    0
+                }
+            }
+            _ => 0,
+        } as u8;
+
         if arguments.len() > u8::MAX as usize {
             let file_path = item
                 .token
@@ -784,7 +795,9 @@ impl<'a> ByteCompiler<'a> {
             ));
         }
 
-        self.func().code.push(ByteCode::Call(arguments.len() as u8));
+        self.func()
+            .code
+            .push(ByteCode::Call(arguments.len() as u8 + literal_call));
 
         Ok(())
     }

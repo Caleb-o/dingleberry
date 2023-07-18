@@ -8,6 +8,7 @@ pub mod gc;
 pub mod nativefunction;
 pub mod object;
 pub mod value;
+mod value_methods;
 pub mod vm;
 
 fn nt_print(_: &mut VM, args: Vec<Value>) -> Value {

@@ -13,6 +13,7 @@ use crate::{
     nativefunction::{NativeFn, NativeFunction},
     object::{Module, Object, ObjectData, StructDef, StructInstance},
     value::Value,
+    value_methods,
 };
 
 const RUNTIME_INTERNING: bool = true;
@@ -33,6 +34,8 @@ pub struct VM {
     pub globals: HashMap<String, Value>,
     pub interned_strings: HashMap<u32, Rc<Object>>,
 
+    value_methods: HashMap<&'static str, Value>,
+
     string_allocs: usize,
 
     call_stack: Vec<CallFrame>,
@@ -48,6 +51,8 @@ impl VM {
             globals: HashMap::new(),
             interned_strings: HashMap::with_capacity(8),
             string_allocs: 0,
+
+            value_methods: HashMap::new(),
 
             call_stack: Vec::new(),
             running: false,
@@ -77,6 +82,7 @@ impl VM {
                 stack: &self.stack,
                 constants: &self.constants,
                 globals: &self.globals,
+                value_methods: &self.value_methods,
                 interned_strings: &self.interned_strings,
             },
         )
@@ -119,6 +125,7 @@ impl VM {
                 stack: &self.stack,
                 constants: &self.constants,
                 globals: &self.globals,
+                value_methods: &self.value_methods,
                 interned_strings: &self.interned_strings,
             }),
             bump_next,
@@ -191,8 +198,9 @@ impl VM {
     pub fn start(&mut self) {
         self.running = true;
         self.register_functions();
+        self.register_value_methods();
 
-        println!("Code: {:?}", self.get_function().code);
+        // println!("Code: {:?}", self.get_function().code);
 
         if let Err(e) = self.run() {
             println!("{e}");
@@ -358,7 +366,7 @@ impl VM {
                     let (lhs, rhs) = self.maybe_get_top_two()?;
 
                     if VM::are_numbers(&lhs, &rhs) {
-                        self.binary_op_numbers(instruction, lhs, rhs)?;
+                        VM::binary_op_numbers(self, instruction, lhs, rhs)?;
                     } else if VM::are_strings(&lhs, &rhs) {
                         self.binary_op_strings(instruction, lhs, rhs)?;
                     } else {
@@ -591,6 +599,23 @@ impl VM {
         self.register_function("dbg_globals", None, &super::nt_dbg_globals);
     }
 
+    fn register_value_method(
+        &mut self,
+        identifier: &'static str,
+        param_count: Option<u8>,
+        func: NativeFn,
+    ) {
+        let func = NativeFunction::alloc(self, identifier, param_count, func);
+        self.value_methods.insert(identifier, Value::Object(func));
+    }
+
+    fn register_value_methods(&mut self) {
+        self.register_value_method("add", Some(2), &value_methods::nt_binary_add);
+        self.register_value_method("sub", Some(2), &value_methods::nt_binary_sub);
+        self.register_value_method("mul", Some(2), &value_methods::nt_binary_mul);
+        self.register_value_method("div", Some(2), &value_methods::nt_binary_div);
+    }
+
     #[inline]
     fn are_numbers(lhs: &Value, rhs: &Value) -> bool {
         matches!(lhs, Value::Number(_)) && lhs.kind_equals(&rhs)
@@ -739,83 +764,110 @@ impl VM {
     }
 
     fn get_property(&mut self, item: Value, property: String) -> Result<(), SpruceErr> {
-        if let Value::Object(obj) = &item {
-            match &*obj.upgrade().unwrap().data.borrow() {
-                &ObjectData::Module(ref module) => {
-                    if let Some(value) = module.items.get(&property) {
-                        // Assign receiver to function
-                        if let Value::Object(obj) = &value {
-                            match &mut *obj.upgrade().unwrap().data.borrow_mut() {
-                                ObjectData::Function(function) => {
-                                    Rc::get_mut(function).unwrap().receiver = Some(item.clone());
+        match &item {
+            Value::Object(obj) => {
+                match &*obj.upgrade().unwrap().data.borrow() {
+                    &ObjectData::Module(ref module) => {
+                        if let Some(value) = module.items.get(&property) {
+                            // Assign receiver to function
+                            if let Value::Object(obj) = &value {
+                                match &mut *obj.upgrade().unwrap().data.borrow_mut() {
+                                    ObjectData::Function(function) => {
+                                        Rc::get_mut(function).unwrap().receiver =
+                                            Some(item.clone());
+                                    }
+                                    _ => {}
                                 }
-                                _ => {}
                             }
+
+                            self.push(value.clone());
+                        } else {
+                            return Err(SpruceErr::new(
+                                format!("Unknown property '{property}' on {item}"),
+                                SpruceErrData::VM,
+                            ));
                         }
-
-                        self.push(value.clone());
-                    } else {
-                        return Err(SpruceErr::new(
-                            format!("Unknown property '{property}' on {item}"),
-                            SpruceErrData::VM,
-                        ));
                     }
-                }
 
-                &ObjectData::StructDef(ref struct_) => {
-                    if let Some(value) = struct_.items.get(&property) {
-                        // Assign receiver to function
-                        if let Value::Object(obj) = &value {
-                            match &mut *obj.upgrade().unwrap().data.borrow_mut() {
-                                ObjectData::Function(function) => {
-                                    Rc::get_mut(function).unwrap().receiver = Some(item.clone());
+                    &ObjectData::StructDef(ref struct_) => {
+                        if let Some(value) = struct_.items.get(&property) {
+                            // Assign receiver to function
+                            if let Value::Object(obj) = &value {
+                                match &mut *obj.upgrade().unwrap().data.borrow_mut() {
+                                    ObjectData::Function(function) => {
+                                        Rc::get_mut(function).unwrap().receiver =
+                                            Some(item.clone());
+                                    }
+                                    _ => {}
                                 }
-                                _ => {}
                             }
+
+                            self.push(value.clone());
+                        } else {
+                            return Err(SpruceErr::new(
+                                format!("Unknown property '{property}' on {item}"),
+                                SpruceErrData::VM,
+                            ));
                         }
-
-                        self.push(value.clone());
-                    } else {
-                        return Err(SpruceErr::new(
-                            format!("Unknown property '{property}' on {item}"),
-                            SpruceErrData::VM,
-                        ));
                     }
-                }
 
-                &ObjectData::StructInstance(ref struct_) => {
-                    if let Some(value) = struct_.values.get(&property) {
-                        // Assign receiver to function
-                        if let Value::Object(obj) = &value {
-                            match &mut *obj.upgrade().unwrap().data.borrow_mut() {
-                                ObjectData::Function(function) => {
-                                    Rc::get_mut(function).unwrap().receiver = Some(item.clone());
+                    &ObjectData::StructInstance(ref struct_) => {
+                        if let Some(value) = struct_.values.get(&property) {
+                            // Assign receiver to function
+                            if let Value::Object(obj) = &value {
+                                match &mut *obj.upgrade().unwrap().data.borrow_mut() {
+                                    ObjectData::Function(function) => {
+                                        Rc::get_mut(function).unwrap().receiver =
+                                            Some(item.clone());
+                                    }
+                                    _ => {}
                                 }
-                                _ => {}
                             }
+
+                            self.push(value.clone());
+                        } else {
+                            return Err(SpruceErr::new(
+                                format!("Unknown property '{property}' on {item}"),
+                                SpruceErrData::VM,
+                            ));
                         }
-
-                        self.push(value.clone());
-                    } else {
-                        return Err(SpruceErr::new(
-                            format!("Unknown property '{property}' on {item}"),
-                            SpruceErrData::VM,
-                        ));
                     }
-                }
 
-                n => {
-                    return Err(SpruceErr::new(
-                        format!("Cannot access property on {n:?}"),
-                        SpruceErrData::VM,
-                    ))
+                    n => {
+                        return Err(SpruceErr::new(
+                            format!("Cannot access property on {n:?}"),
+                            SpruceErrData::VM,
+                        ))
+                    }
                 }
             }
-        } else {
-            return Err(SpruceErr::new(
-                format!("Cannot access property on {item:?}"),
-                SpruceErrData::VM,
-            ));
+
+            // Try value method
+            _ => {
+                if let Some(method) = self.value_methods.get(&property.as_str()) {
+                    // We want to make sure they have the same type, as they most likely
+                    // will require the same type
+                    if !item.kind_equals(&self.peek()) {
+                        return Err(SpruceErr::new(
+                            format!(
+                                "Type mismatch in value method {item:?} and {:?}",
+                                self.peek()
+                            ),
+                            SpruceErrData::VM,
+                        ));
+                    }
+
+                    // Restore lhs onto the stack
+                    // NOTE: Cannot just push, as a 0.div(2) will result in 2 / 0
+                    self.stack.insert(self.stack.len() - 1, item);
+                    self.stack.push(method.clone());
+                } else {
+                    return Err(SpruceErr::new(
+                        format!("Cannot access property on {item:?}"),
+                        SpruceErrData::VM,
+                    ));
+                }
+            }
         }
 
         Ok(())

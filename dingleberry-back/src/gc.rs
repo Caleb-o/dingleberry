@@ -104,6 +104,7 @@ pub struct Roots<'a> {
     pub stack: &'a [Value],
     pub constants: &'a [Value],
     pub globals: &'a HashMap<String, Value>,
+    pub value_methods: &'a HashMap<&'static str, Value>,
     pub interned_strings: &'a HashMap<u32, Rc<Object>>,
 }
 
@@ -238,6 +239,14 @@ impl GarbageCollector {
         }
 
         for item in roots.globals.values() {
+            if let Value::Object(obj) = item {
+                if let Some(object) = obj.upgrade() {
+                    self.mark(&object);
+                }
+            }
+        }
+
+        for item in roots.value_methods.values() {
             if let Value::Object(obj) = item {
                 if let Some(object) = obj.upgrade() {
                     self.mark(&object);
