@@ -12,7 +12,7 @@ use crate::object::{Object, ObjectData};
 use crate::value::Value;
 
 /// Total initial bytes before a collection occurs
-const INITIAL_COLLECTION_SIZE: usize = 1024 * 1024;
+const INITIAL_COLLECTION_SIZE: usize = 1024;
 /// Threshold multiplier applied to next_sweep size
 const SWEEP_FACTOR: usize = 2;
 /// Amount of collections before managing the old generation
@@ -35,15 +35,6 @@ impl Generation {
     pub fn sweep(&mut self, stats: &mut GarbageStats) {
         self.objects.retain(|obj| {
             let is_marked = obj.marked.get();
-            if cfg!(Debug) && !is_marked {
-                // Object is unreachable, "deallocate" it
-                // NOTE: Obviously as an RC, it will dealloc once the Rc is dropped
-                println!(
-                    "Deallocating object with data: {:?} {}",
-                    obj.data,
-                    Rc::weak_count(&obj),
-                );
-            }
 
             if !is_marked {
                 stats.frees += 1;
@@ -108,8 +99,10 @@ pub struct GarbageCollector {
 
 /// An object that can be threaded through the garbage collector,
 /// as multiple parameters would be gross
+#[derive(Clone, Copy)]
 pub struct Roots<'a> {
     pub stack: &'a [Value],
+    pub constants: &'a [Value],
     pub globals: &'a HashMap<String, Value>,
     pub interned_strings: &'a HashMap<u32, Rc<Object>>,
 }
@@ -159,7 +152,7 @@ impl GarbageCollector {
 
         // Check for next collection
         if self.bytes_allocated >= self.next_sweep {
-            self.collect_garbage(roots);
+            self.collect_garbage(Some(roots));
         }
 
         let obj = Rc::new(Object {
@@ -233,6 +226,14 @@ impl GarbageCollector {
             }
         }
 
+        for item in roots.constants {
+            if let Value::Object(obj) = item {
+                if let Some(object) = obj.upgrade() {
+                    self.mark(&object);
+                }
+            }
+        }
+
         for item in roots.globals.values() {
             if let Value::Object(obj) = item {
                 if let Some(object) = obj.upgrade() {
@@ -246,15 +247,36 @@ impl GarbageCollector {
         }
     }
 
+    pub fn collect_all_garbage<'a>(&mut self, roots: Option<Roots<'a>>) {
+        if cfg!(Debug) {
+            println!("Collecting al garbage");
+        }
+        self.stats.collections += 1;
+
+        if let Some(roots) = roots {
+            self.mark_roots(roots);
+        }
+
+        self.young.sweep(&mut self.stats);
+        self.old.sweep(&mut self.stats);
+
+        if roots.is_some() {
+            // Append young to old
+            self.old.transfer(&mut self.young);
+        }
+    }
+
     /// Returns if it swept old generation
-    #[inline]
-    pub fn collect_garbage<'a>(&mut self, roots: Roots<'a>) {
+    pub fn collect_garbage<'a>(&mut self, roots: Option<Roots<'a>>) {
         if cfg!(Debug) {
             println!("Collecting garbage");
         }
         self.stats.collections += 1;
 
-        self.mark_roots(roots);
+        if let Some(roots) = roots {
+            self.mark_roots(roots);
+        }
+
         self.sweep();
     }
 }

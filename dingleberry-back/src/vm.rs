@@ -70,6 +70,7 @@ impl VM {
             data,
             Roots {
                 stack: &self.stack,
+                constants: &self.constants,
                 globals: &self.globals,
                 interned_strings: &self.interned_strings,
             },
@@ -108,11 +109,12 @@ impl VM {
 
     #[inline]
     pub fn collect(&mut self) {
-        self.gc.collect_garbage(Roots {
+        self.gc.collect_garbage(Some(Roots {
             stack: &self.stack,
+            constants: &self.constants,
             globals: &self.globals,
             interned_strings: &self.interned_strings,
-        });
+        }));
     }
 
     pub fn call(&mut self, maybe_function: Value, arg_count: usize) -> Result<(), SpruceErr> {
@@ -227,7 +229,17 @@ impl VM {
             self.dump_stack_trace();
         }
 
+        self.cleanup();
         self.gc.write_stats();
+    }
+
+    fn cleanup(&mut self) {
+        self.stack.clear();
+        self.constants.clear();
+        self.globals.clear();
+        self.interned_strings.clear();
+
+        self.gc.collect_all_garbage(None);
     }
 
     fn dump_stack_trace(&self) {
