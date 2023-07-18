@@ -18,7 +18,7 @@ use crate::{
 const RUNTIME_INTERNING: bool = true;
 const STRINGS_BEFORE_SWEEP: usize = 64;
 
-struct CallFrame {
+pub struct CallFrame {
     pub ip: usize,
     pub identifier: String,
     pub arg_count: u8,
@@ -52,6 +52,11 @@ impl VM {
             call_stack: Vec::new(),
             running: false,
         }
+    }
+
+    #[inline]
+    pub fn get_callstack(&self) -> &Vec<CallFrame> {
+        &self.call_stack
     }
 
     #[inline]
@@ -187,7 +192,7 @@ impl VM {
         self.running = true;
         self.register_functions();
 
-        // println!("Code: {:?}", self.get_function().code);
+        println!("Code: {:?}", self.get_function().code);
 
         if let Err(e) = self.run() {
             println!("{e}");

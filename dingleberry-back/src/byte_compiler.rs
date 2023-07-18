@@ -1143,8 +1143,28 @@ impl<'a> ByteCompiler<'a> {
     }
 
     fn visit_program(&mut self, statements: &Vec<Box<Ast>>) -> Result<(), SpruceErr> {
-        for stmt in statements {
+        for (idx, stmt) in statements.iter().enumerate() {
             self.visit(stmt)?;
+
+            if let AstData::ExpressionStatement(is_stmt, _) = &stmt.data {
+                if !is_stmt && idx != statements.len() - 1 {
+                    let file_path = stmt
+                        .token
+                        .lexeme
+                        .as_ref()
+                        .map(|span| (*span.source.file_path).clone());
+
+                    return Err(SpruceErr::new(
+                        "Cannot use bare expression unless it is the last expression in the body"
+                            .into(),
+                        SpruceErrData::Compiler {
+                            file_path,
+                            line: stmt.token.line,
+                            column: stmt.token.column,
+                        },
+                    ));
+                }
+            }
         }
 
         Ok(())

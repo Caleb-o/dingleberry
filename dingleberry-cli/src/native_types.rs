@@ -1,6 +1,49 @@
-use std::fs::{self};
+use std::{
+    fs::{self},
+    rc::Rc,
+};
 
 use dingleberry_back::{object::ObjectData, value::Value, vm::VM};
+use sdl2::{render::WindowCanvas, EventPump, Sdl};
+
+pub struct Sdl2App {
+    pub context: Sdl,
+    pub canvas: WindowCanvas,
+    pub event_pump: EventPump,
+    pub fps_limit: u32,
+
+    running: bool,
+}
+
+impl Sdl2App {
+    // pub fn new(title: &str, width: u32, height: u32, fps_limit: u32) -> anyhow::Result<Self> {
+    //     let sdl_context = sdl2::init().map_err(SdlAppError::new)?;
+    //     let video_subsystem = sdl_context.video().map_err(SdlAppError::new)?;
+    //     let ttf_context = sdl2::ttf::init()?;
+
+    //     let window = video_subsystem
+    //         .window(title, width, height)
+    //         .position_centered()
+    //         .build()
+    //         .unwrap();
+
+    //     let canvas = window.into_canvas().accelerated().build().unwrap();
+    //     let event_pump = sdl_context.event_pump().map_err(SdlAppError::new)?;
+    //     let texture_creator = canvas.texture_creator();
+
+    //     Ok(Self {
+    //         context: sdl_context,
+    //         ttf_context,
+    //         video: video_subsystem,
+    //         canvas,
+    //         texture_creator,
+    //         event_pump,
+    //         fps_limit,
+    //         textures: Vec::new(),
+    //         running: true,
+    //     })
+    // }
+}
 
 pub fn register_native_objects(vm: &mut VM) {
     vm.build_module("File", false, |vm, module| {
@@ -24,6 +67,32 @@ pub fn register_native_objects(vm: &mut VM) {
 
     vm.build_module("Gc", false, |vm, module| {
         module.add_func(vm, "collect", None, &gc_collect);
+    })
+    .unwrap();
+
+    vm.build_module("Runtime", false, |vm, module| {
+        module.add_func(vm, "print_current_fn_code", None, &|vm, _| {
+            let current_frame = vm.get_callstack().last().unwrap();
+
+            if let ObjectData::Function(func) = &*current_frame.function.data.borrow() {
+                println!("Code {:?}", func.code);
+            }
+
+            Value::None
+        });
+    })
+    .unwrap();
+
+    vm.build_module("Graphics", false, |vm, module| {
+        module.add_func(vm, "create_window", Some(4), &|vm, args| match (
+            args[0].get_as_string(),
+            args[1].get_as_number(),
+            args[2].get_as_number(),
+            args[3].get_as_number(),
+        ) {
+            (Some(title), Some(width), Some(height), Some(fps_limit)) => Value::None,
+            _ => Value::None,
+        });
     })
     .unwrap();
 }

@@ -82,6 +82,13 @@ impl Lexer {
         }
     }
 
+    pub fn peek_next(&self) -> char {
+        match self.source.content.chars().nth(self.pos + 1) {
+            Some(c) => c,
+            None => '\0',
+        }
+    }
+
     // Utility
     fn capture_into(&self, start: usize, end: usize) -> Span {
         Span {
@@ -246,7 +253,7 @@ impl Lexer {
 
         self.advance();
 
-        if self.peek() == '.' {
+        if self.peek() == '.' && self.peek_next().is_numeric() {
             self.advance();
             is_float = true;
         }
@@ -255,7 +262,7 @@ impl Lexer {
             // TODO: Allow floats
             self.advance();
 
-            if self.peek() == '.' {
+            if self.peek() == '.' && self.peek_next().is_numeric() {
                 self.advance();
                 if is_float {
                     return self.make_token(TokenKind::Error, self.column, None);

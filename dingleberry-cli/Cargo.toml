@@ -10,3 +10,4 @@ dingleberry-shared = { path = "../dingleberry-shared" }
 dingleberry-front = { path = "../dingleberry-front" }
 dingleberry-back = { path = "../dingleberry-back" }
 anyhow = "1.0.71"
+sdl2 = "0.35.2"
