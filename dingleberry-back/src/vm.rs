@@ -317,9 +317,13 @@ impl VM {
 
     fn dump_stack_trace(&self) {
         for (idx, frame) in self.call_stack.iter().rev().enumerate() {
-            print!("[{idx}] ");
+            print!("[{}] ", self.call_stack.len() - 1 - idx);
             match &*frame.function.data.borrow() {
                 ObjectData::Function(func) => {
+                    if let Some(receiver) = &func.receiver {
+                        print!("{receiver}:");
+                    }
+
                     println!(
                         "{}({})",
                         frame.identifier,
@@ -733,9 +737,10 @@ impl VM {
                     let value = module
                         .items
                         .get(&property)
-                        .map(|v| (*v).clone())
+                        .map(|v| v.clone())
                         .unwrap_or(Value::None);
 
+                    // Assign receiver to function
                     if let Value::Object(obj) = &value {
                         match &mut *obj.upgrade().unwrap().data.borrow_mut() {
                             ObjectData::Function(function) => {
@@ -752,9 +757,10 @@ impl VM {
                     let value: Value = struct_
                         .items
                         .get(&property)
-                        .map(|v| (*v).clone())
+                        .map(|v| v.clone())
                         .unwrap_or(Value::None);
 
+                    // Assign receiver to function
                     if let Value::Object(obj) = &value {
                         match &mut *obj.upgrade().unwrap().data.borrow_mut() {
                             ObjectData::Function(function) => {
@@ -771,9 +777,10 @@ impl VM {
                     let value: Value = struct_
                         .values
                         .get(&property)
-                        .map(|v| (*v).clone())
+                        .map(|v| v.clone())
                         .unwrap_or(Value::None);
 
+                    // Assign receiver to function
                     if let Value::Object(obj) = &value {
                         match &mut *obj.upgrade().unwrap().data.borrow_mut() {
                             ObjectData::Function(function) => {

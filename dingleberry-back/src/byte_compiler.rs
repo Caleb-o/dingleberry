@@ -509,6 +509,15 @@ impl<'a> ByteCompiler<'a> {
 
         match maybe_values {
             Some(Symbol { index, depth, .. }) => {
+                // FIXME: Hack to allow use of fields without 'this.'
+                // if self.container_ctx == ContainerContext::Struct {
+                //     let identifier = identifier.to_string();
+                //     let identifier = self.get_string_or_insert(identifier);
+
+                //     self.func()
+                //         .code
+                //         .extend([ByteCode::This, ByteCode::PropertyGet(identifier)]);
+                // } else
                 if depth == 0 {
                     self.func().code.push(ByteCode::GetGlobal(index));
                 } else {
@@ -1197,7 +1206,8 @@ impl<'a> ByteCompiler<'a> {
         }
 
         if let Some(init_fields) = init_fields {
-            let mut current_fields = HashSet::new();
+            let mut current_field_names = HashSet::new();
+            let mut current_fields = Vec::new();
 
             for field in init_fields {
                 let struct_items = &self.current_struct.as_ref().unwrap().items;
@@ -1208,7 +1218,9 @@ impl<'a> ByteCompiler<'a> {
                     .as_ref()
                     .map(|span| (*span.source.file_path).clone());
 
-                if !current_fields.insert(identifier) {
+                current_fields.push(identifier);
+
+                if !current_field_names.insert(identifier) {
                     return Err(SpruceErr::new(
                         format!("Struct '{identifier}' already contains init field '{identifier}'"),
                         SpruceErrData::Compiler {
