@@ -11,7 +11,7 @@ use crate::{
     bytecode::ByteCode,
     gc::{GarbageCollector, Roots},
     nativefunction::{NativeFn, NativeFunction},
-    object::{Object, ObjectData, StructInstance},
+    object::{Module, Object, ObjectData, StructDef, StructInstance},
     value::Value,
 };
 
@@ -115,6 +115,84 @@ impl VM {
             globals: &self.globals,
             interned_strings: &self.interned_strings,
         }));
+    }
+
+    pub fn build_module<F>(
+        &mut self,
+        identifier: &'static str,
+        override_if_some: bool,
+        build_f: F,
+    ) -> Result<(), SpruceErr>
+    where
+        F: FnOnce(&mut Self, &mut Module),
+    {
+        let identifier = identifier.to_string();
+
+        if !override_if_some && self.globals.contains_key(&identifier) {
+            return Err(SpruceErr::new(format!("Cannot build module with name '{identifier}' as an item with that name already exists"), SpruceErrData::VM));
+        }
+
+        let mut module = Module {
+            identifier: identifier.clone(),
+            items: HashMap::new(),
+        };
+        build_f(self, &mut module);
+
+        let obj = self.allocate(ObjectData::Module(Rc::new(module)));
+        self.globals.insert(identifier, Value::Object(obj));
+        Ok(())
+    }
+
+    pub fn build_struct<F>(
+        &mut self,
+        identifier: &'static str,
+        override_if_some: bool,
+        build_f: F,
+    ) -> Result<(), SpruceErr>
+    where
+        F: FnOnce(&mut Self, &mut StructDef),
+    {
+        let identifier = identifier.to_string();
+
+        if !override_if_some && self.globals.contains_key(&identifier) {
+            return Err(SpruceErr::new(format!("Cannot build module with name '{identifier}' as an item with that name already exists"), SpruceErrData::VM));
+        }
+
+        let mut struct_ = StructDef {
+            identifier: identifier.clone(),
+            init_items: None,
+            items: HashMap::new(),
+        };
+        build_f(self, &mut struct_);
+
+        let obj = self.allocate(ObjectData::StructDef(Rc::new(struct_)));
+        self.globals.insert(identifier, Value::Object(obj));
+        Ok(())
+    }
+
+    pub fn create_function(
+        &mut self,
+        identifier: &'static str,
+        param_count: Option<u8>,
+        func: NativeFn,
+    ) -> Value {
+        let func = NativeFunction::alloc(self, identifier, param_count, func);
+        Value::Object(func)
+    }
+
+    pub fn start(&mut self) {
+        self.running = true;
+        self.register_functions();
+
+        // println!("Code: {:?}", self.get_function().code);
+
+        if let Err(e) = self.run() {
+            println!("{e}");
+            self.dump_stack_trace();
+        }
+
+        self.cleanup();
+        self.gc.write_stats();
     }
 
     pub fn call(&mut self, maybe_function: Value, arg_count: usize) -> Result<(), SpruceErr> {
@@ -226,21 +304,6 @@ impl VM {
         });
 
         Ok(())
-    }
-
-    pub fn start(&mut self) {
-        self.running = true;
-        self.register_functions();
-
-        // println!("Code: {:?}", self.get_function().code);
-
-        if let Err(e) = self.run() {
-            println!("{e}");
-            self.dump_stack_trace();
-        }
-
-        self.cleanup();
-        self.gc.write_stats();
     }
 
     fn cleanup(&mut self) {

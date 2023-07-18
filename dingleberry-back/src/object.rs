@@ -5,12 +5,35 @@ use std::{
     rc::Rc,
 };
 
-use crate::{byte_compiler::Function, nativefunction::NativeFunction, value::Value};
+use crate::{
+    byte_compiler::Function,
+    nativefunction::{NativeFn, NativeFunction},
+    value::Value,
+    vm::VM,
+};
 
 #[derive(Clone, PartialEq)]
 pub struct Module {
     pub identifier: String,
     pub items: HashMap<String, Value>,
+}
+
+impl Module {
+    #[inline]
+    pub fn add_item(&mut self, identifier: &'static str, value: Value) {
+        self.items.insert(identifier.to_string(), value);
+    }
+
+    pub fn add_func(
+        &mut self,
+        vm: &mut VM,
+        identifier: &'static str,
+        param_count: Option<u8>,
+        func: NativeFn,
+    ) {
+        let value = vm.create_function(identifier, param_count, func);
+        self.items.insert(identifier.to_string(), value);
+    }
 }
 
 impl PartialOrd for Module {
@@ -24,6 +47,24 @@ pub struct StructDef {
     pub identifier: String,
     pub init_items: Option<Vec<String>>,
     pub items: HashMap<String, Value>,
+}
+
+impl StructDef {
+    #[inline]
+    pub fn add_item(&mut self, identifier: &'static str, value: Value) {
+        self.items.insert(identifier.to_string(), value);
+    }
+
+    pub fn add_func(
+        &mut self,
+        vm: &mut VM,
+        identifier: &'static str,
+        param_count: Option<u8>,
+        func: NativeFn,
+    ) {
+        let value = vm.create_function(identifier, param_count, func);
+        self.items.insert(identifier.to_string(), value);
+    }
 }
 
 impl PartialOrd for StructDef {
