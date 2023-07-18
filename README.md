@@ -63,3 +63,21 @@ module Stuff {
 Stuff.call_hello(Stuff.Foo());
 Stuff.call_hello(Stuff.Bar());
 ```
+
+[Struct Constructor](./examples/struct_constructor.dingle)
+
+```rs
+# The constructor is done with an argument list, rather than a function
+struct Foo(a, b) {
+    let a, b;
+
+    fn my_fields {
+        print('My fields, a: ', this.a, ', b: ', this.b);
+    }
+}
+
+# Instantiate an instance with a constructor
+Foo(10, 20).my_fields();
+# Can call any function from the type itself
+Foo.my_fields();
+```
