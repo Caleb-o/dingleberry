@@ -1,4 +1,5 @@
 use std::{
+    any::Any,
     cell::{Cell, RefCell},
     collections::HashMap,
     fmt::{Debug, Display},
@@ -86,7 +87,7 @@ impl PartialOrd for StructInstance {
 }
 
 /// Data that lives inside of an object, like heaped values
-#[derive(Clone, PartialEq, PartialOrd)]
+#[derive(Clone)]
 pub enum ObjectData {
     Str(String),
     List(Vec<Value>),
@@ -96,6 +97,30 @@ pub enum ObjectData {
     Module(Rc<Module>),
     StructDef(Rc<StructDef>),
     StructInstance(Rc<StructInstance>),
+    NativeObject(Rc<dyn Any>),
+}
+
+impl PartialEq for ObjectData {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Str(l0), Self::Str(r0)) => l0 == r0,
+            (Self::List(l0), Self::List(r0)) => l0 == r0,
+            (Self::Tuple(l0), Self::Tuple(r0)) => l0 == r0,
+            (Self::Function(l0), Self::Function(r0)) => l0 == r0,
+            (Self::NativeFunction(l0), Self::NativeFunction(r0)) => l0 == r0,
+            (Self::Module(l0), Self::Module(r0)) => l0 == r0,
+            (Self::StructDef(l0), Self::StructDef(r0)) => l0 == r0,
+            (Self::StructInstance(l0), Self::StructInstance(r0)) => l0 == r0,
+
+            _ => false,
+        }
+    }
+}
+
+impl PartialOrd for ObjectData {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        todo!()
+    }
 }
 
 impl Debug for ObjectData {
@@ -109,6 +134,7 @@ impl Debug for ObjectData {
             Self::Module { .. } => write!(f, "Module"),
             Self::StructDef(_) => write!(f, "StructDef"),
             Self::StructInstance(_) => write!(f, "StructInstance"),
+            Self::NativeObject(_) => write!(f, "NativeObject"),
         }
     }
 }

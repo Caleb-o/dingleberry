@@ -2,7 +2,7 @@ use std::fs::{self};
 
 use dingleberry_back::{value::Value, vm::VM};
 
-pub fn register_native_types(vm: &mut VM) {
+pub fn register_native_objects(vm: &mut VM) {
     vm.build_module("File", false, |vm, module| {
         module.add_func(vm, "read_from", Some(1), &file_read_from_file);
         module.add_func(vm, "write_to", Some(2), &file_write_to_file);

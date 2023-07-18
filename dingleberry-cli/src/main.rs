@@ -2,7 +2,7 @@ use std::{env, fs, path::Path, rc::Rc};
 
 use dingleberry_back::{byte_compiler::ByteCompiler, vm::VM};
 use dingleberry_front::{parser::Parser, source::Source};
-use native_types::register_native_types;
+use native_types::register_native_objects;
 
 mod native_types;
 
@@ -40,7 +40,7 @@ fn main() {
         return;
     }
 
-    register_native_types(&mut vm);
+    register_native_objects(&mut vm);
 
     if let Err(e) = vm.call(maybe_func.unwrap(), 0) {
         println!("Error: {e}");
