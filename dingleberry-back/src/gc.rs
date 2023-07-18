@@ -12,7 +12,7 @@ use crate::object::{Object, ObjectData};
 use crate::value::Value;
 
 /// Total initial bytes before a collection occurs
-const INITIAL_COLLECTION_SIZE: usize = 1024;
+const INITIAL_COLLECTION_SIZE: usize = 1024 * 1024;
 /// Threshold multiplier applied to next_sweep size
 const SWEEP_FACTOR: usize = 2;
 /// Amount of collections before managing the old generation
