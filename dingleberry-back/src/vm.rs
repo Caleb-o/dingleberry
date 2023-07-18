@@ -108,13 +108,16 @@ impl VM {
     }
 
     #[inline]
-    pub fn collect(&mut self) {
-        self.gc.collect_garbage(Some(Roots {
-            stack: &self.stack,
-            constants: &self.constants,
-            globals: &self.globals,
-            interned_strings: &self.interned_strings,
-        }));
+    pub fn collect(&mut self, bump_next: bool) {
+        self.gc.collect_garbage(
+            Some(Roots {
+                stack: &self.stack,
+                constants: &self.constants,
+                globals: &self.globals,
+                interned_strings: &self.interned_strings,
+            }),
+            bump_next,
+        );
     }
 
     pub fn build_module<F>(
@@ -734,63 +737,66 @@ impl VM {
         if let Value::Object(obj) = &item {
             match &*obj.upgrade().unwrap().data.borrow() {
                 &ObjectData::Module(ref module) => {
-                    let value = module
-                        .items
-                        .get(&property)
-                        .map(|v| v.clone())
-                        .unwrap_or(Value::None);
-
-                    // Assign receiver to function
-                    if let Value::Object(obj) = &value {
-                        match &mut *obj.upgrade().unwrap().data.borrow_mut() {
-                            ObjectData::Function(function) => {
-                                Rc::get_mut(function).unwrap().receiver = Some(item.clone());
+                    if let Some(value) = module.items.get(&property) {
+                        // Assign receiver to function
+                        if let Value::Object(obj) = &value {
+                            match &mut *obj.upgrade().unwrap().data.borrow_mut() {
+                                ObjectData::Function(function) => {
+                                    Rc::get_mut(function).unwrap().receiver = Some(item.clone());
+                                }
+                                _ => {}
                             }
-                            _ => {}
                         }
-                    }
 
-                    self.push(value);
+                        self.push(value.clone());
+                    } else {
+                        return Err(SpruceErr::new(
+                            format!("Unknown property '{property}' on {item}"),
+                            SpruceErrData::VM,
+                        ));
+                    }
                 }
 
                 &ObjectData::StructDef(ref struct_) => {
-                    let value: Value = struct_
-                        .items
-                        .get(&property)
-                        .map(|v| v.clone())
-                        .unwrap_or(Value::None);
-
-                    // Assign receiver to function
-                    if let Value::Object(obj) = &value {
-                        match &mut *obj.upgrade().unwrap().data.borrow_mut() {
-                            ObjectData::Function(function) => {
-                                Rc::get_mut(function).unwrap().receiver = Some(item.clone());
+                    if let Some(value) = struct_.items.get(&property) {
+                        // Assign receiver to function
+                        if let Value::Object(obj) = &value {
+                            match &mut *obj.upgrade().unwrap().data.borrow_mut() {
+                                ObjectData::Function(function) => {
+                                    Rc::get_mut(function).unwrap().receiver = Some(item.clone());
+                                }
+                                _ => {}
                             }
-                            _ => {}
                         }
-                    }
 
-                    self.push(value);
+                        self.push(value.clone());
+                    } else {
+                        return Err(SpruceErr::new(
+                            format!("Unknown property '{property}' on {item}"),
+                            SpruceErrData::VM,
+                        ));
+                    }
                 }
 
                 &ObjectData::StructInstance(ref struct_) => {
-                    let value: Value = struct_
-                        .values
-                        .get(&property)
-                        .map(|v| v.clone())
-                        .unwrap_or(Value::None);
-
-                    // Assign receiver to function
-                    if let Value::Object(obj) = &value {
-                        match &mut *obj.upgrade().unwrap().data.borrow_mut() {
-                            ObjectData::Function(function) => {
-                                Rc::get_mut(function).unwrap().receiver = Some(item.clone());
+                    if let Some(value) = struct_.values.get(&property) {
+                        // Assign receiver to function
+                        if let Value::Object(obj) = &value {
+                            match &mut *obj.upgrade().unwrap().data.borrow_mut() {
+                                ObjectData::Function(function) => {
+                                    Rc::get_mut(function).unwrap().receiver = Some(item.clone());
+                                }
+                                _ => {}
                             }
-                            _ => {}
                         }
-                    }
 
-                    self.push(value);
+                        self.push(value.clone());
+                    } else {
+                        return Err(SpruceErr::new(
+                            format!("Unknown property '{property}' on {item}"),
+                            SpruceErrData::VM,
+                        ));
+                    }
                 }
 
                 n => {

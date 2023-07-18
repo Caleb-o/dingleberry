@@ -153,7 +153,7 @@ impl GarbageCollector {
 
         // Check for next collection
         if self.bytes_allocated >= self.next_sweep {
-            self.collect_garbage(Some(roots));
+            self.collect_garbage(Some(roots), true);
         }
 
         let obj = Rc::new(Object {
@@ -202,7 +202,7 @@ impl GarbageCollector {
         }
     }
 
-    fn sweep(&mut self) {
+    fn sweep(&mut self, bump_next: bool) {
         self.young.sweep(&mut self.stats);
 
         self.generation_counter += 1;
@@ -215,7 +215,9 @@ impl GarbageCollector {
         self.old.transfer(&mut self.young);
 
         // Set next sweep point
-        self.next_sweep *= SWEEP_FACTOR;
+        if bump_next {
+            self.next_sweep *= SWEEP_FACTOR;
+        }
     }
 
     fn mark_roots<'a>(&mut self, roots: Roots<'a>) {
@@ -268,7 +270,7 @@ impl GarbageCollector {
     }
 
     /// Returns if it swept old generation
-    pub fn collect_garbage<'a>(&mut self, roots: Option<Roots<'a>>) {
+    pub fn collect_garbage<'a>(&mut self, roots: Option<Roots<'a>>, bump_next: bool) {
         if cfg!(Debug) {
             println!("Collecting garbage");
         }
@@ -278,7 +280,7 @@ impl GarbageCollector {
             self.mark_roots(roots);
         }
 
-        self.sweep();
+        self.sweep(bump_next);
     }
 }
 
@@ -306,7 +308,7 @@ mod tests {
             });
 
             // Obj2 is not on in the roots as it's not interned, so it is not reachable by the GC
-            vm.collect();
+            vm.collect(true);
         }
 
         assert_eq!(vm.gc.young.objects.len(), 0);
@@ -327,7 +329,7 @@ mod tests {
             vm.pop();
         }
 
-        vm.collect();
+        vm.collect(false);
 
         assert_eq!(vm.gc.young.objects.len(), 0);
         assert_eq!(vm.gc.old.objects.len(), 0);

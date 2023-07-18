@@ -12,12 +12,19 @@ pub fn register_native_objects(vm: &mut VM) {
     vm.build_module("Strings", false, |vm, module| {
         module.add_func(vm, "slice", Some(3), &strings_slice);
         module.add_func(vm, "slice_n", Some(3), &strings_slice_n);
+        module.add_func(vm, "append", Some(2), &strings_append);
+        module.add_func(vm, "clone_no_intern", Some(1), &strings_clone_no_intern);
     })
     .unwrap();
 
     vm.build_module("List", false, |vm, module| {
         module.add_func(vm, "append", Some(2), &list_append);
         module.add_func(vm, "prepend", Some(2), &list_prepend);
+    })
+    .unwrap();
+
+    vm.build_module("Gc", false, |vm, module| {
+        module.add_func(vm, "collect", None, &gc_collect);
     })
     .unwrap();
 }
@@ -91,6 +98,35 @@ fn strings_slice_n(vm: &mut VM, args: Vec<Value>) -> Value {
     }
 }
 
+fn strings_append(_: &mut VM, args: Vec<Value>) -> Value {
+    match (&args[0], &args[1]) {
+        (Value::Object(lhs), Value::Object(rhs)) => {
+            let lhs = lhs.upgrade().unwrap();
+            let rhs = rhs.upgrade().unwrap();
+
+            match (&mut *lhs.data.borrow_mut(), &*rhs.data.borrow()) {
+                (&mut ObjectData::Str(ref mut lhs), &ObjectData::Str(ref rhs)) => {
+                    lhs.push_str(rhs);
+                }
+                _ => {}
+            }
+
+            Value::None
+        }
+        _ => Value::None,
+    }
+}
+
+fn strings_clone_no_intern(vm: &mut VM, args: Vec<Value>) -> Value {
+    if let Value::Object(obj) = &args[0] {
+        if let ObjectData::Str(s) = &*obj.upgrade().unwrap().data.borrow() {
+            let obj = vm.allocate_string(s.clone(), false);
+            return Value::Object(obj);
+        }
+    }
+    Value::None
+}
+
 /*
    === LIST
 */
@@ -110,5 +146,16 @@ fn list_prepend(_: &mut VM, mut args: Vec<Value>) -> Value {
             l.insert(0, args.pop().unwrap());
         }
     }
+    Value::None
+}
+
+/*
+   === GC
+*/
+
+fn gc_collect(vm: &mut VM, _: Vec<Value>) -> Value {
+    // Since this can be called by the user, we don't want to bump
+    // the next collection size
+    vm.collect(false);
     Value::None
 }
