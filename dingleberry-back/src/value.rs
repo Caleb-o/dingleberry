@@ -5,7 +5,7 @@ use std::{
 
 use dingleberry_front::token::{Token, TokenKind};
 
-use crate::object::Object;
+use crate::object::{Object, ObjectData};
 
 /// These are values that live on the stack
 #[derive(Clone)]
@@ -42,6 +42,16 @@ impl Value {
     #[inline]
     pub fn kind_equals(&self, other: &Value) -> bool {
         std::mem::discriminant(self) == std::mem::discriminant(other)
+    }
+
+    pub fn get_as_string(&self) -> Option<String> {
+        if let Value::Object(obj) = &self {
+            match &*obj.upgrade().unwrap().data.borrow() {
+                ObjectData::Str(ref s) => return Some(s.clone()),
+                _ => {}
+            }
+        }
+        None
     }
 }
 

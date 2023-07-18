@@ -2,6 +2,9 @@ use std::{env, fs, path::Path, rc::Rc};
 
 use dingleberry_back::{byte_compiler::ByteCompiler, vm::VM};
 use dingleberry_front::{parser::Parser, source::Source};
+use native_types::register_native_types;
+
+mod native_types;
 
 fn main() {
     if env::args().len() <= 1 {
@@ -36,6 +39,8 @@ fn main() {
         println!("{e}");
         return;
     }
+
+    register_native_types(&mut vm);
 
     if let Err(e) = vm.call(maybe_func.unwrap(), 0) {
         println!("Error: {e}");
