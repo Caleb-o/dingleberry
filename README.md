@@ -4,6 +4,9 @@ Dingleberry is a cringe language written in Rust. It is a dynamic, garbage colle
 
 Its main purpose is for testing and tweaking the garbage collector for other projects, but could still be used on its own to do small and basic tasks.
 
+[Dummy Project](./dummy_project/)
+There is a basic dummy project example, which can be made using the cli init command.
+
 [Hello World](./examples/hello_world.dingle)
 
 ```rs
