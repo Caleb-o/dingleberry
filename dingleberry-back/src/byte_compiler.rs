@@ -1,6 +1,5 @@
 use std::{
     collections::{HashMap, HashSet},
-    hash::Hash,
     rc::Rc,
 };
 
@@ -136,7 +135,7 @@ impl SymbolTable {
     }
 
     fn find_symbol_any(&self, identifier: &str) -> Option<Symbol> {
-        for (index, sym) in self.scope.iter().rev().enumerate() {
+        for sym in self.scope.iter().rev() {
             if sym.identifier == identifier {
                 return Some(sym.clone());
             }

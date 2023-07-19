@@ -1,0 +1,4 @@
+{
+  "main": "src/main.dingle",
+  "native_modules": ["runtime"]
+}

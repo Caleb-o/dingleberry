@@ -15,6 +15,14 @@ fn nt_print(_: &mut VM, args: Vec<Value>) -> Value {
     for item in args {
         print!("{item}");
     }
+
+    Value::None
+}
+
+fn nt_println(_: &mut VM, args: Vec<Value>) -> Value {
+    for item in args {
+        print!("{item}");
+    }
     println!();
 
     Value::None

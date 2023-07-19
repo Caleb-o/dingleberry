@@ -474,14 +474,14 @@ impl VM {
                 ByteCode::PropertySet(index) => {
                     let item = self.pop();
                     let property = self.get_string(index);
-                    let value = self.pop();
+                    let value = self.peek();
                     self.set_property(item, property, value)?;
                 }
 
                 ByteCode::Jump(index) => self.set_current_ip(index as usize),
 
                 ByteCode::JumpNot(index) => {
-                    let value = self.peek();
+                    let value = self.pop();
 
                     match value {
                         Value::Boolean(b) => {
@@ -589,6 +589,7 @@ impl VM {
 
     fn register_functions(&mut self) {
         self.register_function("print", None, &super::nt_print);
+        self.register_function("println", None, &super::nt_println);
         self.register_function("len", Some(1), &super::nt_len);
         self.register_function("freeze", Some(1), &super::nt_freeze);
         self.register_function("fields_of", Some(1), &super::nt_fields_of);

@@ -1,0 +1,41 @@
+struct Tester(tests) {
+    let tests;
+    let succeeded, failed, total;
+
+    fn new(to_be_tested) {
+        let mut t = Tester(to_be_tested);
+        t.succeeded = 0;
+        t.failed = 0;
+        t.total = len(to_be_tested);
+
+        t
+    }
+
+    fn run {
+        let mut index = 0;
+        println('=== Running ', this.total, ' test(s) ===');
+        loop {
+            if index >= this.total {
+                println('Succeeded ', this.succeeded, ', Failed ', this.failed);
+                return;
+            }
+
+            let current_test = this.tests[index];
+            let id = current_test[0];
+            let test_fn = current_test[1];
+
+            
+            print('[', index, '] Running ', id, '... ');
+
+            if test_fn() {
+                println('SUCCESS');
+                this.succeeded = this.succeeded + 1;
+            } else {
+                println('FAILED');
+                this.failed = this.failed + 1;
+            }
+
+            index = index + 1;
+        }
+    }
+}
