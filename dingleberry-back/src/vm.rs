@@ -208,7 +208,6 @@ impl VM {
         }
 
         self.cleanup();
-        self.gc.write_stats();
     }
 
     pub fn call(&mut self, maybe_function: Value, arg_count: usize) -> Result<(), SpruceErr> {

@@ -4,6 +4,7 @@ use std::{
 };
 
 use dingleberry_back::{object::ObjectData, value::Value, vm::VM};
+use dingleberry_shared::NativeModuleFlags;
 use sdl2::{render::WindowCanvas, EventPump, Sdl};
 
 pub struct Sdl2App {
@@ -45,56 +46,60 @@ impl Sdl2App {
     // }
 }
 
-pub fn register_native_objects(vm: &mut VM) {
-    vm.build_module("File", false, |vm, module| {
-        module.add_func(vm, "read_from", Some(1), &file_read_from_file);
-        module.add_func(vm, "write_to", Some(2), &file_write_to_file);
-    })
-    .unwrap();
+pub fn register_native_objects(vm: &mut VM, native_flags: NativeModuleFlags) {
+    if native_flags.file {
+        vm.build_module("File", false, |vm, module| {
+            module.add_func(vm, "read_from", Some(1), &file_read_from_file);
+            module.add_func(vm, "write_to", Some(2), &file_write_to_file);
+        })
+        .unwrap();
+    }
 
-    vm.build_module("Strings", false, |vm, module| {
-        module.add_func(vm, "slice", Some(3), &strings_slice);
-        module.add_func(vm, "slice_n", Some(3), &strings_slice_n);
-        module.add_func(vm, "clone_no_intern", Some(1), &strings_clone_no_intern);
-    })
-    .unwrap();
+    if native_flags.strings {
+        vm.build_module("Strings", false, |vm, module| {
+            module.add_func(vm, "slice", Some(3), &strings_slice);
+            module.add_func(vm, "slice_n", Some(3), &strings_slice_n);
+            module.add_func(vm, "clone_no_intern", Some(1), &strings_clone_no_intern);
+        })
+        .unwrap();
+    }
 
-    vm.build_module("List", false, |vm, module| {
-        module.add_func(vm, "append", Some(2), &list_append);
-        module.add_func(vm, "prepend", Some(2), &list_prepend);
-    })
-    .unwrap();
+    if native_flags.list {
+        vm.build_module("List", false, |vm, module| {
+            module.add_func(vm, "append", Some(2), &list_append);
+            module.add_func(vm, "prepend", Some(2), &list_prepend);
+        })
+        .unwrap();
+    }
 
-    vm.build_module("Gc", false, |vm, module| {
-        module.add_func(vm, "collect", None, &gc_collect);
-    })
-    .unwrap();
+    if native_flags.runtime {
+        vm.build_module("Runtime", false, |vm, module| {
+            module.add_func(vm, "collect", None, &runtime_gc_collect);
+            module.add_func(vm, "print_current_fn_code", None, &|vm, _| {
+                let current_frame = vm.get_callstack().last().unwrap();
 
-    vm.build_module("Runtime", false, |vm, module| {
-        module.add_func(vm, "print_current_fn_code", None, &|vm, _| {
-            let current_frame = vm.get_callstack().last().unwrap();
+                if let ObjectData::Function(func) = &*current_frame.function.data.borrow() {
+                    println!("Code {:?}", func.code);
+                }
 
-            if let ObjectData::Function(func) = &*current_frame.function.data.borrow() {
-                println!("Code {:?}", func.code);
-            }
+                Value::None
+            });
+        })
+        .unwrap();
+    }
 
-            Value::None
-        });
-    })
-    .unwrap();
-
-    vm.build_module("Graphics", false, |vm, module| {
-        module.add_func(vm, "create_window", Some(4), &|vm, args| match (
-            args[0].get_as_string(),
-            args[1].get_as_number(),
-            args[2].get_as_number(),
-            args[3].get_as_number(),
-        ) {
-            (Some(title), Some(width), Some(height), Some(fps_limit)) => Value::None,
-            _ => Value::None,
-        });
-    })
-    .unwrap();
+    // vm.build_module("Graphics", false, |vm, module| {
+    //     module.add_func(vm, "create_window", Some(4), &|vm, args| match (
+    //         args[0].get_as_string(),
+    //         args[1].get_as_number(),
+    //         args[2].get_as_number(),
+    //         args[3].get_as_number(),
+    //     ) {
+    //         (Some(title), Some(width), Some(height), Some(fps_limit)) => Value::None,
+    //         _ => Value::None,
+    //     });
+    // })
+    // .unwrap();
 }
 
 /*
@@ -199,10 +204,10 @@ fn list_prepend(_: &mut VM, mut args: Vec<Value>) -> Value {
 }
 
 /*
-   === GC
+   === RUNTIME
 */
 
-fn gc_collect(vm: &mut VM, _: Vec<Value>) -> Value {
+fn runtime_gc_collect(vm: &mut VM, _: Vec<Value>) -> Value {
     // Since this can be called by the user, we don't want to bump
     // the next collection size
     vm.collect(false);
