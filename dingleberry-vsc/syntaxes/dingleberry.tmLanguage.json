@@ -12,9 +12,9 @@
     "comments": {
       "patterns": [
         {
-          "begin": "#",
+          "begin": "//",
           "end": "\n",
-          "name": "comment.line.hash"
+          "name": "comment.line.double-slash"
         }
       ]
     },

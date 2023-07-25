@@ -296,7 +296,8 @@ impl Lexer {
     fn skip_whitespace(&mut self) {
         while !self.is_at_end() {
             match self.peek() {
-                '#' => {
+                '/' if self.peek_next() == '/' => {
+                    self.advance();
                     self.advance();
 
                     while self.peek() != 0 as char && self.peek() != '\n' {

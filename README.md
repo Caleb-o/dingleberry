@@ -79,8 +79,8 @@ struct Foo(a, b) {
     }
 }
 
-# Instantiate an instance with a constructor
+// Instantiate an instance with a constructor
 Foo(10, 20).my_fields();
-# Can call any function from the type itself
+// Can call any function from the type itself
 Foo.my_fields();
 ```
