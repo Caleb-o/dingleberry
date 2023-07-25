@@ -426,6 +426,13 @@ impl<'a> ByteCompiler<'a> {
         }
     }
 
+    fn get_filepath(token: &Token) -> Option<String> {
+        token
+            .lexeme
+            .as_ref()
+            .map(|span| (*span.source.file_path).clone())
+    }
+
     #[inline]
     fn func(&mut self) -> &mut Function {
         Rc::get_mut(self.current_func.as_mut().unwrap()).unwrap()
@@ -567,11 +574,7 @@ impl<'a> ByteCompiler<'a> {
         }
 
         if values.len() > u16::MAX as usize {
-            let file_path = item
-                .token
-                .lexeme
-                .as_ref()
-                .map(|span| (*span.source.file_path).clone());
+            let file_path = Self::get_filepath(&item.token);
 
             return Err(SpruceErr::new(
                 "More than 65535 values in tuple literal".to_string(),
@@ -598,11 +601,7 @@ impl<'a> ByteCompiler<'a> {
         }
 
         if values.len() > u16::MAX as usize {
-            let file_path = item
-                .token
-                .lexeme
-                .as_ref()
-                .map(|span| (*span.source.file_path).clone());
+            let file_path = Self::get_filepath(&item.token);
 
             return Err(SpruceErr::new(
                 "More than 65535 values in array literal".to_string(),
@@ -698,11 +697,7 @@ impl<'a> ByteCompiler<'a> {
         self.add_symbol(&item.token, false, false)?;
 
         if *is_variadic && position != parameters.len() - 1 {
-            let file_path = item
-                .token
-                .lexeme
-                .as_ref()
-                .map(|span| (*span.source.file_path).clone());
+            let file_path = Self::get_filepath(&item.token);
 
             return Err(SpruceErr::new(
                 format!(
@@ -815,11 +810,7 @@ impl<'a> ByteCompiler<'a> {
         } as u8;
 
         if arguments.len() > u8::MAX as usize {
-            let file_path = item
-                .token
-                .lexeme
-                .as_ref()
-                .map(|span| (*span.source.file_path).clone());
+            let file_path = Self::get_filepath(&item.token);
 
             return Err(SpruceErr::new(
                 "More than 256 arguments in function call".to_string(),
@@ -918,11 +909,7 @@ impl<'a> ByteCompiler<'a> {
         }) = self.symbol_table.find_symbol_any(&identifier)
         {
             if !mutable {
-                let file_path = item
-                    .token
-                    .lexeme
-                    .as_ref()
-                    .map(|span| (*span.source.file_path).clone());
+                let file_path = Self::get_filepath(&item.token);
 
                 return Err(SpruceErr::new(
                     format!("Cannot mutate immutable identifier '{identifier}'"),
@@ -940,11 +927,7 @@ impl<'a> ByteCompiler<'a> {
                 ByteCode::SetLocal(index as u8)
             });
         } else {
-            let file_path = item
-                .token
-                .lexeme
-                .as_ref()
-                .map(|span| (*span.source.file_path).clone());
+            let file_path = Self::get_filepath(&item.token);
 
             return Err(SpruceErr::new(
                 format!("Binding '{identifier}' does not exist"),
@@ -1106,11 +1089,7 @@ impl<'a> ByteCompiler<'a> {
         self.func().code.push(ByteCode::Return);
 
         if self.ctx != Context::Function {
-            let file_path = item
-                .token
-                .lexeme
-                .as_ref()
-                .map(|span| (*span.source.file_path).clone());
+            let file_path = Self::get_filepath(&item.token);
 
             return Err(SpruceErr::new(
                 "Cannot return outside function".into(),
@@ -1135,11 +1114,7 @@ impl<'a> ByteCompiler<'a> {
 
             if let AstData::ExpressionStatement(is_stmt, _) = &stmt.data {
                 if !is_stmt && idx != statements.len() - 1 {
-                    let file_path = stmt
-                        .token
-                        .lexeme
-                        .as_ref()
-                        .map(|span| (*span.source.file_path).clone());
+                    let file_path = Self::get_filepath(&stmt.token);
 
                     return Err(SpruceErr::new(
                         "Cannot use bare expression unless it is the last expression in the body"
@@ -1197,11 +1172,7 @@ impl<'a> ByteCompiler<'a> {
 
             if let AstData::ExpressionStatement(is_stmt, _) = &stmt.data {
                 if !is_stmt && idx != statements.len() - 1 {
-                    let file_path = stmt
-                        .token
-                        .lexeme
-                        .as_ref()
-                        .map(|span| (*span.source.file_path).clone());
+                    let file_path = Self::get_filepath(&stmt.token);
 
                     return Err(SpruceErr::new(
                         "Cannot use bare expression unless it is the last expression in the body"
@@ -1282,10 +1253,7 @@ impl<'a> ByteCompiler<'a> {
                 let struct_items = &self.current_struct.as_ref().unwrap().items;
                 let identifier = field.lexeme.as_ref().unwrap().get_slice();
 
-                let file_path = field
-                    .lexeme
-                    .as_ref()
-                    .map(|span| (*span.source.file_path).clone());
+                let file_path = Self::get_filepath(&field);
 
                 current_fields.push(identifier);
 
@@ -1343,11 +1311,7 @@ impl<'a> ByteCompiler<'a> {
 
     fn visit_this(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
         if self.container_ctx == ContainerContext::None {
-            let file_path = item
-                .token
-                .lexeme
-                .as_ref()
-                .map(|span| (*span.source.file_path).clone());
+            let file_path = Self::get_filepath(&item.token);
 
             return Err(SpruceErr::new(
                 "Cannot use 'this' outside of modules".into(),
