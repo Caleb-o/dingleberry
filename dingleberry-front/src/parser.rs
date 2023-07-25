@@ -40,9 +40,15 @@ impl Parser {
         let token = lexer.next();
 
         let mut included = HashMap::new();
-        let path = Path::new(&*source.file_path).canonicalize().unwrap();
-        let current_path = Box::new(path.clone().parent().unwrap().to_path_buf());
-        included.insert(Box::new(path), Rc::new(Ast::new_empty(token.clone())));
+
+        let current_path = if source.file_path.as_str() != "source" {
+            let path = Path::new(&*source.file_path).canonicalize().unwrap();
+            let current_path = Box::new(path.clone().parent().unwrap().to_path_buf());
+            included.insert(Box::new(path), Rc::new(Ast::new_empty(token.clone())));
+            current_path
+        } else {
+            Box::new(PathBuf::from("source"))
+        };
 
         Self {
             lexer,
@@ -783,13 +789,27 @@ impl Parser {
 
     #[inline]
     fn consume_parameter(&mut self) -> Result<Box<Ast>, SpruceErr> {
-        let param_name = self.get_current();
-        self.consume(
-            TokenKind::Identifier,
-            "Expected identifier in parameter list",
-        )?;
+        Ok(if self.current.kind == TokenKind::LSquare {
+            self.consume_here();
 
-        Ok(Ast::new_parameter(param_name))
+            let param_name = self.get_current();
+            self.consume(
+                TokenKind::Identifier,
+                "Expected identifier in parameter list",
+            )?;
+
+            self.consume(TokenKind::RSquare, "Expect ']' after parameter identifier")?;
+
+            Ast::new_parameter(param_name, true)
+        } else {
+            let param_name = self.get_current();
+            self.consume(
+                TokenKind::Identifier,
+                "Expected identifier in parameter list",
+            )?;
+
+            Ast::new_parameter(param_name, false)
+        })
     }
 
     fn collect_params(

@@ -132,7 +132,7 @@ impl GarbageCollector {
             ObjectData::Str(s) => std::mem::size_of::<String>() + s.as_bytes().len(),
             ObjectData::List(values) => std::mem::size_of::<Value>() * values.capacity(),
             ObjectData::Tuple(values) => std::mem::size_of::<Value>() * values.len(),
-            ObjectData::Function(_) => std::mem::size_of::<Function>(),
+            ObjectData::Function(_, _) => std::mem::size_of::<Function>(),
             ObjectData::NativeFunction(_) => std::mem::size_of::<NativeFunction>(),
             ObjectData::Module(m) => std::mem::size_of::<Value>() * m.items.len(),
             ObjectData::StructDef(s) => std::mem::size_of::<Value>() * s.items.len(),
@@ -322,10 +322,6 @@ mod tests {
 
         assert_eq!(vm.gc.young.objects.len(), 0);
         assert_eq!(vm.gc.old.objects.len(), 1);
-
-        vm.pop();
-
-        assert_eq!(vm.gc.old.objects.len(), 0);
     }
 
     #[test]

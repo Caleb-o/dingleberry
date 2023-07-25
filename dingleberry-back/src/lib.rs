@@ -37,7 +37,7 @@ fn nt_len(_: &mut VM, args: Vec<Value>) -> Value {
             ObjectData::Str(s) => s.len(),
             ObjectData::List(l) => l.len(),
             ObjectData::Tuple(t) => t.len(),
-            ObjectData::Function(f) => f.arg_count as usize,
+            ObjectData::Function(f, _) => f.arg_count as usize,
             ObjectData::NativeFunction(f) => f.arg_count.unwrap_or_default() as usize,
             ObjectData::Module(m) => m.items.len(),
 

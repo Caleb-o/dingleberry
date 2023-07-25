@@ -28,7 +28,7 @@ pub enum AstData {
     UnaryOp(Box<Ast>),
     LogicalOp(LogicalOp),
 
-    Parameter,
+    Parameter(bool),
 
     Function(Function),
     FunctionCall(FunctionCall),
@@ -235,10 +235,10 @@ impl Ast {
         })
     }
 
-    pub fn new_parameter(token: Token) -> Box<Self> {
+    pub fn new_parameter(token: Token, is_variadic: bool) -> Box<Self> {
         Box::new(Self {
             token,
-            data: AstData::Parameter,
+            data: AstData::Parameter(is_variadic),
         })
     }
 

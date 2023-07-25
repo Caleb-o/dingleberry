@@ -92,7 +92,7 @@ pub enum ObjectData {
     Str(String),
     List(Vec<Value>),
     Tuple(Box<[Value]>),
-    Function(Rc<Function>),
+    Function(Rc<Function>, bool),
     NativeFunction(NativeFunction),
     Module(Rc<Module>),
     StructDef(Rc<StructDef>),
@@ -106,7 +106,7 @@ impl PartialEq for ObjectData {
             (Self::Str(l0), Self::Str(r0)) => l0 == r0,
             (Self::List(l0), Self::List(r0)) => l0 == r0,
             (Self::Tuple(l0), Self::Tuple(r0)) => l0 == r0,
-            (Self::Function(l0), Self::Function(r0)) => l0 == r0,
+            (Self::Function(l0, l1), Self::Function(r0, r1)) => l0 == r0 && l1 == r1,
             (Self::NativeFunction(l0), Self::NativeFunction(r0)) => l0 == r0,
             (Self::Module(l0), Self::Module(r0)) => l0 == r0,
             (Self::StructDef(l0), Self::StructDef(r0)) => l0 == r0,
@@ -121,7 +121,7 @@ impl PartialOrd for ObjectData {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         match (self, other) {
             (ObjectData::Str(l), ObjectData::Str(r)) => l.partial_cmp(r),
-            (ObjectData::Function(l), ObjectData::Function(r)) => l.partial_cmp(r),
+            (ObjectData::Function(l, _), ObjectData::Function(r, _)) => l.partial_cmp(r),
             _ => None,
         }
     }
@@ -133,7 +133,7 @@ impl Debug for ObjectData {
             Self::Str(_) => write!(f, "String"),
             Self::List(_) => write!(f, "List"),
             Self::Tuple(_) => write!(f, "Tuple"),
-            Self::Function(_) => write!(f, "Function"),
+            Self::Function(_, _) => write!(f, "Function"),
             Self::NativeFunction(_) => write!(f, "NativeFunction"),
             Self::Module { .. } => write!(f, "Module"),
             Self::StructDef(_) => write!(f, "StructDef"),
@@ -176,7 +176,7 @@ impl Display for ObjectData {
                 write!(f, ")")
             }
 
-            Self::Function(func) => write!(
+            Self::Function(func, _) => write!(
                 f,
                 "fn<{}, {}>",
                 func.identifier.as_ref().unwrap_or(&"Anonymous".into()),

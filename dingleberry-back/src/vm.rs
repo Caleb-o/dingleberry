@@ -221,14 +221,15 @@ impl VM {
         let Value::Object(maybe_function) = maybe_function else { unreachable!() };
         let maybe_function = maybe_function.upgrade().unwrap();
 
-        let (identifier, param_count) = match &*maybe_function.data.borrow() {
-            ObjectData::Function(function) => (
+        let (identifier, param_count, has_variadic) = match &*maybe_function.data.borrow() {
+            ObjectData::Function(function, has_variadic) => (
                 function.identifier.clone().unwrap_or("Anonymous".into()),
                 Some(function.arg_count),
+                *has_variadic,
             ),
 
             ObjectData::NativeFunction(function) => {
-                (function.identifier.to_string(), function.arg_count)
+                (function.identifier.to_string(), function.arg_count, false)
             }
 
             ObjectData::StructDef(struct_) => {
@@ -236,6 +237,7 @@ impl VM {
                 (
                     struct_.identifier.clone(),
                     struct_.init_items.as_ref().map(|items| items.len() as u8),
+                    false,
                 )
             }
 
@@ -248,16 +250,34 @@ impl VM {
             }
         };
 
-        if param_count.is_some() && arg_count != param_count.unwrap() as usize {
-            return Err(SpruceErr::new(
-                format!(
-                    "Function '{}' expected {} argument(s) but received {}",
-                    identifier,
-                    param_count.unwrap(),
-                    arg_count
-                ),
-                SpruceErrData::VM,
-            ));
+        if param_count.is_some() {
+            let param_count = param_count.unwrap() as usize;
+
+            if (!has_variadic && arg_count != param_count)
+                || (has_variadic && arg_count < param_count - 1)
+            {
+                return Err(SpruceErr::new(
+                    format!(
+                        "Function '{}' expected {} argument(s) but received {}",
+                        identifier, param_count, arg_count
+                    ),
+                    SpruceErrData::VM,
+                ));
+            }
+
+            if has_variadic {
+                let args = if arg_count > param_count {
+                    let variadic_args_c = arg_count - param_count;
+                    self.stack
+                        .drain(self.stack.len() - 1 - variadic_args_c..)
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+
+                let obj = self.allocate(ObjectData::List(args));
+                self.push(Value::Object(obj));
+            }
         }
 
         match &*maybe_function.data.borrow() {
@@ -270,7 +290,7 @@ impl VM {
 
                 let args = self
                     .stack
-                    .drain((self.stack.len() - arg_count)..)
+                    .drain((self.stack.len() - param_count.unwrap_or(arg_count as u8) as usize)..)
                     .collect::<Vec<Value>>();
                 let value = (func.function)(self, args);
                 self.stack.push(value);
@@ -299,7 +319,7 @@ impl VM {
         }
 
         let receiver_arg = match &*maybe_function.data.borrow() {
-            ObjectData::Function(func) => {
+            ObjectData::Function(func, _) => {
                 if let Some(rec) = &func.receiver {
                     self.push(rec.clone());
                     1
@@ -313,8 +333,10 @@ impl VM {
         self.call_stack.push(CallFrame {
             ip: 0,
             identifier: identifier.clone(),
-            arg_count: (receiver_arg + arg_count) as u8,
-            stack_start: self.stack.len() - receiver_arg - arg_count,
+            arg_count: (receiver_arg + param_count.unwrap_or(arg_count as u8)) as u8,
+            stack_start: self.stack.len()
+                - receiver_arg as usize
+                - param_count.unwrap_or(arg_count as u8) as usize,
             function: maybe_function,
         });
 
@@ -334,7 +356,7 @@ impl VM {
         for (idx, frame) in self.call_stack.iter().rev().enumerate() {
             print!("[{}] ", self.call_stack.len() - 1 - idx);
             match &*frame.function.data.borrow() {
-                ObjectData::Function(func) => {
+                ObjectData::Function(func, _) => {
                     if let Some(receiver) = &func.receiver {
                         print!("{receiver}:");
                     }
@@ -772,7 +794,7 @@ impl VM {
                             // Assign receiver to function
                             if let Value::Object(obj) = &value {
                                 match &mut *obj.upgrade().unwrap().data.borrow_mut() {
-                                    ObjectData::Function(function) => {
+                                    ObjectData::Function(function, _) => {
                                         Rc::get_mut(function).unwrap().receiver =
                                             Some(item.clone());
                                     }
@@ -794,7 +816,7 @@ impl VM {
                             // Assign receiver to function
                             if let Value::Object(obj) = &value {
                                 match &mut *obj.upgrade().unwrap().data.borrow_mut() {
-                                    ObjectData::Function(function) => {
+                                    ObjectData::Function(function, _) => {
                                         Rc::get_mut(function).unwrap().receiver =
                                             Some(item.clone());
                                     }
@@ -816,7 +838,7 @@ impl VM {
                             // Assign receiver to function
                             if let Value::Object(obj) = &value {
                                 match &mut *obj.upgrade().unwrap().data.borrow_mut() {
-                                    ObjectData::Function(function) => {
+                                    ObjectData::Function(function, _) => {
                                         Rc::get_mut(function).unwrap().receiver =
                                             Some(item.clone());
                                     }
@@ -999,7 +1021,7 @@ impl VM {
 
     #[inline]
     fn get_function(&self) -> Rc<Function> {
-        let ObjectData::Function(ref function) =
+        let ObjectData::Function(ref function, _) =
             &*self.call_stack.last().unwrap().function.data.borrow() else { unreachable!() };
         Rc::clone(function)
     }

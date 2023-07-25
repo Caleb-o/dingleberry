@@ -78,7 +78,7 @@ pub fn register_native_objects(vm: &mut VM, native_flags: NativeModuleFlags) {
             module.add_func(vm, "print_current_fn_code", None, &|vm, _| {
                 let current_frame = vm.get_callstack().last().unwrap();
 
-                if let ObjectData::Function(func) = &*current_frame.function.data.borrow() {
+                if let ObjectData::Function(func, _) = &*current_frame.function.data.borrow() {
                     println!("Code {:?}", func.code);
                 }
 

@@ -278,7 +278,7 @@ impl<'a> ByteCompiler<'a> {
 
         let func = self
             .vm
-            .allocate(ObjectData::Function(Rc::clone(&current_func)));
+            .allocate(ObjectData::Function(Rc::clone(&current_func), false));
 
         Ok(Value::Object(func))
     }
@@ -400,7 +400,12 @@ impl<'a> ByteCompiler<'a> {
         self.symbol_table.new_func();
     }
 
-    fn close_function(&mut self, anonymous: bool, last_fn: Option<Rc<Function>>) -> Option<u16> {
+    fn close_function(
+        &mut self,
+        anonymous: bool,
+        has_variadic: bool,
+        last_fn: Option<Rc<Function>>,
+    ) -> Option<u16> {
         self.symbol_table.close_func();
         self.func().code.extend([ByteCode::None, ByteCode::Return]);
 
@@ -410,12 +415,12 @@ impl<'a> ByteCompiler<'a> {
         // println!("Function code {:?}", func.code);
 
         if anonymous || self.current_mod.is_some() || self.current_struct.is_some() {
-            let obj = self.vm.allocate(ObjectData::Function(func));
+            let obj = self.vm.allocate(ObjectData::Function(func, has_variadic));
             self.vm.constants.push(Value::Object(obj));
             Some((self.vm.constants.len() - 1) as u16)
         } else {
             let identifier = func.identifier.as_ref().unwrap().clone();
-            let obj = self.vm.allocate(ObjectData::Function(func));
+            let obj = self.vm.allocate(ObjectData::Function(func, has_variadic));
             self.vm.globals.insert(identifier, Value::Object(obj));
             None
         }
@@ -682,8 +687,39 @@ impl<'a> ByteCompiler<'a> {
         Ok(())
     }
 
-    fn visit_parameter(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        self.add_symbol(&item.token, false, false)
+    fn visit_parameter(
+        &mut self,
+        item: &Box<Ast>,
+        position: usize,
+        parameters: &Vec<Box<Ast>>,
+    ) -> Result<bool, SpruceErr> {
+        let AstData::Parameter(is_variadic) = &item.data else { unreachable!() };
+
+        self.add_symbol(&item.token, false, false)?;
+
+        if *is_variadic && position != parameters.len() - 1 {
+            let file_path = item
+                .token
+                .lexeme
+                .as_ref()
+                .map(|span| (*span.source.file_path).clone());
+
+            return Err(SpruceErr::new(
+                format!(
+                    "Parameter '{}' is variadic, but is in position {} of {}",
+                    item.token.lexeme.as_ref().unwrap().get_slice(),
+                    position + 1,
+                    parameters.len()
+                ),
+                SpruceErrData::Compiler {
+                    file_path,
+                    line: item.token.line,
+                    column: item.token.column,
+                },
+            ));
+        }
+
+        Ok(*is_variadic)
     }
 
     fn visit_function(
@@ -720,9 +756,10 @@ impl<'a> ByteCompiler<'a> {
                 .unwrap_or_default(),
         );
 
+        let mut has_variadic = false;
         if let Some(parameters) = parameters {
-            for param in parameters {
-                self.visit_parameter(param)?;
+            for (idx, param) in parameters.iter().enumerate() {
+                has_variadic = self.visit_parameter(param, idx, parameters)?;
             }
         }
 
@@ -736,7 +773,7 @@ impl<'a> ByteCompiler<'a> {
             _ => unreachable!(),
         }
 
-        if let Some(index) = self.close_function(*anonymous, last_function) {
+        if let Some(index) = self.close_function(*anonymous, has_variadic, last_function) {
             if !anonymous {
                 let func = &self.vm.constants[index as usize];
                 if self.container_ctx == ContainerContext::Module {
