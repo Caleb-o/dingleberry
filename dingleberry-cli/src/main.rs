@@ -73,7 +73,7 @@ fn try_init_project(project_name: String) {
     fs::create_dir(&format!("{project_name}/src")).unwrap();
 
     fs::write(&format!("{project_name}/src/main.dingle"), SCRIPT_TEMPLATE).unwrap();
-    fs::write(&format!("{project_name}/config.json"), DEFAULT_CONFIG).unwrap();
+    fs::write(&format!("{project_name}/config.dconf"), DEFAULT_CONFIG).unwrap();
 
     println!("'{project_name}' created.");
 }
@@ -96,9 +96,9 @@ fn start_vm(args: RunArgs) {
         // Reset
         native_flags = NativeModuleFlags::default();
 
-        let config_path = format!("{file_path}/config.json");
+        let config_path = format!("{file_path}/config.dconf");
         if !Path::exists(&Path::new(&config_path)) {
-            eprintln!("Trying to run project '{file_path}' and could not find config.json");
+            eprintln!("Trying to run project '{file_path}' and could not find config.dconf");
             return;
         }
 
