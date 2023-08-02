@@ -357,7 +357,10 @@ impl<'a> ByteCompiler<'a> {
     fn close_module(&mut self, last_mod: Option<Module>) -> u16 {
         self.symbol_table.close_func();
 
-        let module = self.current_mod.take().unwrap();
+        let mut module = self.current_mod.take().unwrap();
+        // Fields cannot be added after it's created, so we can shrink
+        module.items.shrink_to_fit();
+
         let identifier = module.identifier.clone();
         self.current_mod = last_mod;
 
@@ -385,7 +388,10 @@ impl<'a> ByteCompiler<'a> {
     fn close_struct(&mut self, last_struct: Option<StructDef>) -> u16 {
         self.symbol_table.close_func();
 
-        let struct_ = self.current_struct.take().unwrap();
+        let mut struct_ = self.current_struct.take().unwrap();
+        // Fields cannot be added after it's created, so we can shrink
+        struct_.items.shrink_to_fit();
+
         let identifier = struct_.identifier.clone();
         self.current_struct = last_struct;
 
