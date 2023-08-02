@@ -880,8 +880,14 @@ impl<'a> ByteCompiler<'a> {
     }
 
     fn visit_field_var_declaration(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        let field_name = item.token.lexeme.as_ref().unwrap().get_slice();
-        self.add_item_to_struct(field_name.to_string(), Value::None);
+        let span = item.token.lexeme.as_ref().unwrap();
+        let field_name = if item.token.kind == TokenKind::Identifier {
+            span.get_slice().to_string()
+        } else {
+            let slice = span.get_slice();
+            slice[1..slice.len() - 1].to_string()
+        };
+        self.add_item_to_struct(field_name, Value::None);
 
         self.symbol_table.add_symbol(&item.token, false, false)?;
 
@@ -1035,13 +1041,14 @@ impl<'a> ByteCompiler<'a> {
 
         self.visit(lhs)?;
 
-        let identifier = property
-            .token
-            .lexeme
-            .as_ref()
-            .unwrap()
-            .get_slice()
-            .to_string();
+        let span = property.token.lexeme.as_ref().unwrap();
+
+        let identifier = if property.token.kind == TokenKind::Identifier {
+            span.get_slice().to_string()
+        } else {
+            let slice = span.get_slice();
+            slice[1..slice.len() - 1].to_string()
+        };
         let identifier = self.get_string_or_insert(identifier);
         self.func().code.push(ByteCode::PropertyGet(identifier));
 

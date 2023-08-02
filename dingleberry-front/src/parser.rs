@@ -142,6 +142,17 @@ impl Parser {
         Err(self.error(String::from(msg)))
     }
 
+    fn consume_any(&mut self, expected: &[TokenKind], msg: &str) -> Result<(), SpruceErr> {
+        for kind in expected {
+            if self.current.kind == *kind {
+                self.current = self.lexer.next();
+                return Ok(());
+            }
+        }
+
+        Err(self.error(String::from(msg)))
+    }
+
     fn consume_here(&mut self) {
         self.current = self.lexer.next();
     }
@@ -522,7 +533,10 @@ impl Parser {
         self.consume_here();
 
         let identifier = self.get_current();
-        self.consume(TokenKind::Identifier, "Expect identifier after '.'")?;
+        self.consume_any(
+            &[TokenKind::Identifier, TokenKind::String],
+            "Expect identifier or string after '.'",
+        )?;
         Ok(Ast::new_property_getter(
             identifier.clone(),
             lhs,
@@ -973,7 +987,10 @@ impl Parser {
 
     fn collect_field_let_decl(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let identifier = self.get_current();
-        self.consume(TokenKind::Identifier, "Expected identifier after 'let'")?;
+        self.consume_any(
+            &[TokenKind::Identifier, TokenKind::String],
+            "Expected identifier or string after 'let'",
+        )?;
 
         Ok(Ast::new_field_var_decl(identifier))
     }
