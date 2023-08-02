@@ -27,6 +27,11 @@ impl SpruceErr {
     pub fn new(message: String, payload: SpruceErrData) -> Self {
         Self { message, payload }
     }
+
+    #[inline]
+    pub fn display(&self) {
+        println!("{self}");
+    }
 }
 
 impl From<io::Error> for SpruceErr {

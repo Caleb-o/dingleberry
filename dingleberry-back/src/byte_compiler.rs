@@ -254,6 +254,7 @@ pub struct ByteCompiler<'a> {
     ctx: Context,
     container_ctx: ContainerContext,
     vm: &'a mut VM,
+    had_error: usize,
 }
 
 impl<'a> ByteCompiler<'a> {
@@ -266,6 +267,7 @@ impl<'a> ByteCompiler<'a> {
             ctx: Context::None,
             container_ctx: ContainerContext::None,
             vm,
+            had_error: 0,
         }
     }
 
@@ -283,7 +285,19 @@ impl<'a> ByteCompiler<'a> {
             .vm
             .allocate(ObjectData::Function(Rc::clone(&current_func), false));
 
+        if self.had_error > 0 {
+            return Err(SpruceErr::new(
+                format!("Encountered {} error(s) while compiling", self.had_error),
+                SpruceErrData::Analyser,
+            ));
+        }
+
         Ok(Value::Object(func))
+    }
+
+    fn error(&mut self, err: SpruceErr) {
+        self.had_error += 1;
+        err.display();
     }
 
     fn add_constant(&mut self, value: Value) -> u16 {
@@ -463,11 +477,15 @@ impl<'a> ByteCompiler<'a> {
                 self.add_constant(string)
             };
 
-            self.symbol_table
-                .add_global_symbol(token, is_mutable, index)?;
+            _ = self
+                .symbol_table
+                .add_global_symbol(token, is_mutable, index)
+                .map_err(|e| self.error(e));
         } else {
-            self.symbol_table
-                .add_symbol(token, is_mutable, allow_override)?;
+            _ = self
+                .symbol_table
+                .add_symbol(token, is_mutable, allow_override)
+                .map_err(|e| self.error(e));
         }
 
         Ok(())
@@ -579,7 +597,7 @@ impl<'a> ByteCompiler<'a> {
         if values.len() > u16::MAX as usize {
             let file_path = Self::get_filepath(&item.token);
 
-            return Err(SpruceErr::new(
+            self.error(SpruceErr::new(
                 "More than 65535 values in tuple literal".to_string(),
                 SpruceErrData::Compiler {
                     file_path,
@@ -606,7 +624,7 @@ impl<'a> ByteCompiler<'a> {
         if values.len() > u16::MAX as usize {
             let file_path = Self::get_filepath(&item.token);
 
-            return Err(SpruceErr::new(
+            self.error(SpruceErr::new(
                 "More than 65535 values in array literal".to_string(),
                 SpruceErrData::Compiler {
                     file_path,
@@ -697,12 +715,14 @@ impl<'a> ByteCompiler<'a> {
     ) -> Result<bool, SpruceErr> {
         let AstData::Parameter(is_variadic) = &item.data else { unreachable!() };
 
-        self.add_symbol(&item.token, false, false)?;
+        _ = self
+            .add_symbol(&item.token, false, false)
+            .map_err(|e| self.error(e));
 
         if *is_variadic && position != parameters.len() - 1 {
             let file_path = Self::get_filepath(&item.token);
 
-            return Err(SpruceErr::new(
+            self.error(SpruceErr::new(
                 format!(
                     "Parameter '{}' is variadic, but is in position {} of {}",
                     item.token.lexeme.as_ref().unwrap().get_slice(),
@@ -743,7 +763,9 @@ impl<'a> ByteCompiler<'a> {
         };
 
         if !anonymous {
-            self.add_symbol(&item.token, false, false)?;
+            _ = self
+                .add_symbol(&item.token, false, false)
+                .map_err(|e| self.error(e));
         }
 
         self.open_function(
@@ -815,7 +837,7 @@ impl<'a> ByteCompiler<'a> {
         if arguments.len() > u8::MAX as usize {
             let file_path = Self::get_filepath(&item.token);
 
-            return Err(SpruceErr::new(
+            self.error(SpruceErr::new(
                 "More than 256 arguments in function call".to_string(),
                 SpruceErrData::Compiler {
                     file_path,
@@ -863,11 +885,15 @@ impl<'a> ByteCompiler<'a> {
                 .add_global_symbol(&item.token, *is_mutable, index)?;
         } else if self.symbol_table.find_local_symbol(slice).is_some() {
             // Add new symbol
-            self.symbol_table
-                .add_symbol(&item.token, *is_mutable, true)?;
+            _ = self
+                .symbol_table
+                .add_symbol(&item.token, *is_mutable, true)
+                .map_err(|e| self.error(e));
         } else {
-            self.symbol_table
-                .add_symbol(&item.token, *is_mutable, false)?;
+            _ = self
+                .symbol_table
+                .add_symbol(&item.token, *is_mutable, false)
+                .map_err(|e| self.error(e));
         }
 
         Ok(())
@@ -886,7 +912,10 @@ impl<'a> ByteCompiler<'a> {
         let field_name = get_identifier_or_string(&item.token);
         self.add_item_to_struct(field_name, Value::None);
 
-        self.symbol_table.add_symbol(&item.token, false, false)?;
+        _ = self
+            .symbol_table
+            .add_symbol(&item.token, false, false)
+            .map_err(|e| self.error(e));
 
         Ok(())
     }
@@ -914,7 +943,7 @@ impl<'a> ByteCompiler<'a> {
             if !mutable {
                 let file_path = Self::get_filepath(&item.token);
 
-                return Err(SpruceErr::new(
+                self.error(SpruceErr::new(
                     format!("Cannot mutate immutable identifier '{identifier}'"),
                     SpruceErrData::Compiler {
                         file_path,
@@ -932,7 +961,7 @@ impl<'a> ByteCompiler<'a> {
         } else {
             let file_path = Self::get_filepath(&item.token);
 
-            return Err(SpruceErr::new(
+            self.error(SpruceErr::new(
                 format!("Binding '{identifier}' does not exist"),
                 SpruceErrData::Compiler {
                     file_path,
@@ -1081,7 +1110,7 @@ impl<'a> ByteCompiler<'a> {
         if self.ctx != Context::Function {
             let file_path = Self::get_filepath(&item.token);
 
-            return Err(SpruceErr::new(
+            self.error(SpruceErr::new(
                 "Cannot return outside function".into(),
                 SpruceErrData::Compiler {
                     file_path,
@@ -1106,7 +1135,7 @@ impl<'a> ByteCompiler<'a> {
                 if !is_stmt && idx != statements.len() - 1 {
                     let file_path = Self::get_filepath(&stmt.token);
 
-                    return Err(SpruceErr::new(
+                    self.error(SpruceErr::new(
                         "Cannot use bare expression unless it is the last expression in the body"
                             .into(),
                         SpruceErrData::Compiler {
@@ -1147,7 +1176,9 @@ impl<'a> ByteCompiler<'a> {
             self.visit(&incl.root)?;
 
             _ = self.close_module(last_mod);
-            self.add_symbol(&module_name, false, false)?;
+            _ = self
+                .add_symbol(&module_name, false, false)
+                .map_err(|e| self.error(e));
 
             self.container_ctx = last_container;
         } else {
@@ -1164,7 +1195,7 @@ impl<'a> ByteCompiler<'a> {
                 if !is_stmt && idx != statements.len() - 1 {
                     let file_path = Self::get_filepath(&stmt.token);
 
-                    return Err(SpruceErr::new(
+                    self.error(SpruceErr::new(
                         "Cannot use bare expression unless it is the last expression in the body"
                             .into(),
                         SpruceErrData::Compiler {
@@ -1198,7 +1229,9 @@ impl<'a> ByteCompiler<'a> {
         }
 
         let module_idx = self.close_module(last_mod);
-        self.add_symbol(&item.token, false, false)?;
+        _ = self
+            .add_symbol(&item.token, false, false)
+            .map_err(|e| self.error(e));
 
         if self.current_mod.is_some() {
             let module = &self.vm.constants[module_idx as usize];
@@ -1240,26 +1273,30 @@ impl<'a> ByteCompiler<'a> {
             let mut current_fields = Vec::new();
 
             for field in init_fields {
-                let struct_items = &self.current_struct.as_ref().unwrap().items;
                 let identifier = field.lexeme.as_ref().unwrap().get_slice();
-
                 let file_path = Self::get_filepath(&field);
 
                 current_fields.push(identifier);
 
                 if !current_field_names.insert(identifier) {
-                    return Err(SpruceErr::new(
+                    self.error(SpruceErr::new(
                         format!("Struct '{struct_identifier}' already contains init field '{identifier}'"),
                         SpruceErrData::Compiler {
-                            file_path,
+                            file_path: file_path.clone(),
                             line: field.line,
                             column: field.column,
                         },
                     ));
                 }
 
-                if !struct_items.contains_key(identifier) {
-                    return Err(SpruceErr::new(
+                if !self
+                    .current_struct
+                    .as_ref()
+                    .unwrap()
+                    .items
+                    .contains_key(identifier)
+                {
+                    self.error(SpruceErr::new(
                         format!("Struct '{struct_identifier}' does not contain field '{identifier}' to initialise"),
                         SpruceErrData::Compiler {
                             file_path,
@@ -1275,7 +1312,9 @@ impl<'a> ByteCompiler<'a> {
         }
 
         let struct_idx = self.close_struct(last_struct);
-        self.add_symbol(&item.token, false, false)?;
+        _ = self
+            .add_symbol(&item.token, false, false)
+            .map_err(|e| self.error(e));
 
         match last_ctx {
             ContainerContext::Module => {
@@ -1303,7 +1342,7 @@ impl<'a> ByteCompiler<'a> {
         if self.container_ctx == ContainerContext::None {
             let file_path = Self::get_filepath(&item.token);
 
-            return Err(SpruceErr::new(
+            self.error(SpruceErr::new(
                 "Cannot use 'this' outside of modules".into(),
                 SpruceErrData::Compiler {
                     file_path,
