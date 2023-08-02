@@ -1273,12 +1273,12 @@ impl<'a> ByteCompiler<'a> {
             let mut current_fields = Vec::new();
 
             for field in init_fields {
-                let identifier = field.lexeme.as_ref().unwrap().get_slice();
+                let identifier = get_identifier_or_string(field);
                 let file_path = Self::get_filepath(&field);
 
-                current_fields.push(identifier);
+                current_fields.push(identifier.clone());
 
-                if !current_field_names.insert(identifier) {
+                if !current_field_names.insert(identifier.clone()) {
                     self.error(SpruceErr::new(
                         format!("Struct '{struct_identifier}' already contains init field '{identifier}'"),
                         SpruceErrData::Compiler {
@@ -1294,7 +1294,7 @@ impl<'a> ByteCompiler<'a> {
                     .as_ref()
                     .unwrap()
                     .items
-                    .contains_key(identifier)
+                    .contains_key(&identifier)
                 {
                     self.error(SpruceErr::new(
                         format!("Struct '{struct_identifier}' does not contain field '{identifier}' to initialise"),

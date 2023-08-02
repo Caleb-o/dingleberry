@@ -588,9 +588,9 @@ impl Parser {
         let init_fields = if self.current.kind == TokenKind::LParen {
             self.consume_here();
             let mut fields = vec![self.get_current()];
-            self.consume(
-                TokenKind::Identifier,
-                "Expected identifier in struct init fields",
+            self.consume_any(
+                &[TokenKind::Identifier, TokenKind::String],
+                "Expected identifier or string in struct init fields",
             )?;
 
             while self.current.kind == TokenKind::Comma {
