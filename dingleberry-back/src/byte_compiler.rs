@@ -125,7 +125,10 @@ impl SymbolTable {
     }
 
     fn find_local_symbol(&self, identifier: &str) -> Option<&Symbol> {
-        for sym in self.scope.iter().rev() {
+        for (idx, sym) in self.scope.iter().rev().enumerate() {
+            if idx as u16 >= *self.in_depth.last().unwrap() {
+                break;
+            }
             if identifier == sym.identifier {
                 return Some(sym);
             }
@@ -197,7 +200,7 @@ impl SymbolTable {
         is_mutable: bool,
         allow_override: bool,
     ) -> Result<(), SpruceErr> {
-        let identifier = token.clone().lexeme.unwrap().get_slice().to_string();
+        let identifier = get_identifier_or_string(token);
 
         if !allow_override && self.find_local_symbol(&identifier).is_some() {
             let file_path = token
@@ -880,13 +883,7 @@ impl<'a> ByteCompiler<'a> {
     }
 
     fn visit_field_var_declaration(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        let span = item.token.lexeme.as_ref().unwrap();
-        let field_name = if item.token.kind == TokenKind::Identifier {
-            span.get_slice().to_string()
-        } else {
-            let slice = span.get_slice();
-            slice[1..slice.len() - 1].to_string()
-        };
+        let field_name = get_identifier_or_string(&item.token);
         self.add_item_to_struct(field_name, Value::None);
 
         self.symbol_table.add_symbol(&item.token, false, false)?;
@@ -1041,14 +1038,7 @@ impl<'a> ByteCompiler<'a> {
 
         self.visit(lhs)?;
 
-        let span = property.token.lexeme.as_ref().unwrap();
-
-        let identifier = if property.token.kind == TokenKind::Identifier {
-            span.get_slice().to_string()
-        } else {
-            let slice = span.get_slice();
-            slice[1..slice.len() - 1].to_string()
-        };
+        let identifier = get_identifier_or_string(&property.token);
         let identifier = self.get_string_or_insert(identifier);
         self.func().code.push(ByteCode::PropertyGet(identifier));
 
@@ -1062,14 +1052,7 @@ impl<'a> ByteCompiler<'a> {
         self.visit(expression)?;
         self.visit(lhs)?;
 
-        let identifier = property
-            .token
-            .lexeme
-            .as_ref()
-            .unwrap()
-            .get_slice()
-            .to_string();
-
+        let identifier = get_identifier_or_string(&property.token);
         let identifier = self.get_string_or_insert(identifier);
         self.func().code.push(ByteCode::PropertySet(identifier));
 
@@ -1333,5 +1316,15 @@ impl<'a> ByteCompiler<'a> {
         self.func().code.push(ByteCode::This);
 
         Ok(())
+    }
+}
+
+fn get_identifier_or_string(token: &Token) -> String {
+    let span = token.lexeme.as_ref().unwrap();
+    if token.kind == TokenKind::Identifier {
+        span.get_slice().to_string()
+    } else {
+        let slice = span.get_slice();
+        slice[1..slice.len() - 1].to_string()
     }
 }
