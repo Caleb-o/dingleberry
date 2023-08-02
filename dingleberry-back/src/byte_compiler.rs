@@ -1226,10 +1226,10 @@ impl<'a> ByteCompiler<'a> {
         let last_ctx = self.container_ctx;
         self.container_ctx = ContainerContext::Struct;
 
-        let identifier = item.token.lexeme.as_ref().unwrap().get_slice().to_string();
+        let struct_identifier = item.token.lexeme.as_ref().unwrap().get_slice().to_string();
         let last_struct = self.current_struct.take();
 
-        self.open_struct(identifier.clone());
+        self.open_struct(struct_identifier.clone());
 
         for item in declarations {
             self.visit(item)?;
@@ -1249,7 +1249,7 @@ impl<'a> ByteCompiler<'a> {
 
                 if !current_field_names.insert(identifier) {
                     return Err(SpruceErr::new(
-                        format!("Struct '{identifier}' already contains init field '{identifier}'"),
+                        format!("Struct '{struct_identifier}' already contains init field '{identifier}'"),
                         SpruceErrData::Compiler {
                             file_path,
                             line: field.line,
@@ -1260,7 +1260,7 @@ impl<'a> ByteCompiler<'a> {
 
                 if !struct_items.contains_key(identifier) {
                     return Err(SpruceErr::new(
-                        format!("Struct '{identifier}' does not contain field '{identifier}' to initialise"),
+                        format!("Struct '{struct_identifier}' does not contain field '{identifier}' to initialise"),
                         SpruceErrData::Compiler {
                             file_path,
                             line: field.line,
@@ -1280,12 +1280,12 @@ impl<'a> ByteCompiler<'a> {
         match last_ctx {
             ContainerContext::Module => {
                 let struct_ = &self.vm.constants[struct_idx as usize];
-                self.add_item_to_module(identifier, struct_.clone());
+                self.add_item_to_module(struct_identifier, struct_.clone());
             }
 
             ContainerContext::Struct => {
                 let struct_ = &self.vm.constants[struct_idx as usize];
-                self.add_item_to_struct(identifier, struct_.clone());
+                self.add_item_to_struct(struct_identifier, struct_.clone());
             }
 
             _ => {
