@@ -18,6 +18,7 @@ pub struct LogicalOp {
 pub struct Function {
     pub is_static: bool,
     pub anonymous: bool,
+    pub yields: bool,
     pub parameters: Option<Vec<Box<Ast>>>,
     pub body: Box<Ast>,
 }

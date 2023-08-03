@@ -1,4 +1,4 @@
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ByteCode {
     ConstantByte(u8),
     ConstantShort(u16),
@@ -24,6 +24,7 @@ pub enum ByteCode {
 
     Yield,
     Resume,
+    WrapYielded,
 
     DefineGlobal(u16),
 

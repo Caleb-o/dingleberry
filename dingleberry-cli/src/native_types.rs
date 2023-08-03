@@ -88,6 +88,7 @@ pub fn register_native_objects(vm: &mut VM, native_flags: NativeModuleFlags) {
     if native_flags.coroutine {
         vm.build_module("Coroutine", false, |vm, module| {
             module.add_func(vm, "is_coroutine", None, &coroutine_is_coroutine);
+            module.add_func(vm, "is_complete", None, &coroutine_is_complete);
             module.add_func(vm, "get", None, &coroutine_get);
         })
         .unwrap();
@@ -227,6 +228,15 @@ fn coroutine_is_coroutine(_: &mut VM, args: Vec<Value>) -> Value {
     if let Some(obj) = args[0].get_as_object() {
         if let ObjectData::Coroutine(_) = &*obj.upgrade().unwrap().data.borrow() {
             return Value::Boolean(true);
+        }
+    }
+    Value::Boolean(false)
+}
+
+fn coroutine_is_complete(_: &mut VM, args: Vec<Value>) -> Value {
+    if let Some(obj) = args[0].get_as_object() {
+        if let ObjectData::Coroutine(co) = &*obj.upgrade().unwrap().data.borrow() {
+            return Value::Boolean(co.is_complete);
         }
     }
     Value::Boolean(false)

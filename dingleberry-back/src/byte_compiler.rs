@@ -26,7 +26,7 @@ use crate::{
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Context {
     None,
-    Function,
+    Function(bool),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -329,10 +329,33 @@ impl<'a> ByteCompiler<'a> {
         last_fn: Option<Rc<Function>>,
     ) -> Option<u16> {
         self.symbol_table.close_func();
-        self.func().code.extend([ByteCode::None, ByteCode::Return]);
 
         let func = self.current_func.take().unwrap();
         self.current_func = last_fn;
+
+        if let Some(c) = func.code.last() {
+            if *c != ByteCode::Return {
+                if self.ctx == Context::Function(true) {
+                    self.func().code.extend([
+                        ByteCode::None,
+                        ByteCode::WrapYielded,
+                        ByteCode::Return,
+                    ]);
+                } else {
+                    self.func().code.extend([ByteCode::None, ByteCode::Return]);
+                }
+            }
+        } else {
+            if self.ctx == Context::Function(true) {
+                self.func()
+                    .code
+                    .extend([ByteCode::None, ByteCode::WrapYielded, ByteCode::Return]);
+            } else {
+                self.func().code.extend([ByteCode::None, ByteCode::Return]);
+            }
+        }
+
+        println!("Code: {:?}", func.code);
 
         if anonymous || self.current_kind.is_some() {
             let obj = self.vm.allocate(ObjectData::Function(func, has_variadic));
@@ -560,7 +583,9 @@ impl<'a> ByteCompiler<'a> {
                 _ => self.func().code.push(ByteCode::Pop),
             }
         } else {
-            self.func().code.push(ByteCode::Return);
+            self.func()
+                .code
+                .extend(&[ByteCode::WrapYielded, ByteCode::Return]);
         }
 
         Ok(())
@@ -656,12 +681,13 @@ impl<'a> ByteCompiler<'a> {
         let dingleberry_front::ast_inner::Function {
             is_static,
             anonymous,
+            yields,
             parameters,
             body,
         } = &func;
 
         let last_ctx = self.ctx;
-        self.ctx = Context::Function;
+        self.ctx = Context::Function(*yields);
 
         let last_function = self.current_func.take();
 
@@ -997,11 +1023,12 @@ impl<'a> ByteCompiler<'a> {
         item: &Box<Ast>,
         maybe_expr: &Option<Box<Ast>>,
     ) -> Result<(), SpruceErr> {
-        if self.ctx == Context::None {
+        if self.ctx != Context::Function(true) {
             let file_path = Self::get_filepath(&item.token);
 
             self.error(SpruceErr::new(
-                "Cannot yield outside of a function".into(),
+                "Cannot yield outside of a function or inside a function that does not yield"
+                    .into(),
                 SpruceErrData::Compiler {
                     file_path,
                     line: item.token.line,
@@ -1064,9 +1091,15 @@ impl<'a> ByteCompiler<'a> {
             self.visit(expr)?;
         }
 
-        self.func().code.push(ByteCode::Return);
+        if self.ctx == Context::Function(true) {
+            self.func()
+                .code
+                .extend(&[ByteCode::WrapYielded, ByteCode::Return]);
+        } else {
+            self.func().code.push(ByteCode::Return);
+        }
 
-        if self.ctx != Context::Function {
+        if !matches!(self.ctx, Context::Function(_)) {
             let file_path = Self::get_filepath(&item.token);
 
             self.error(SpruceErr::new(

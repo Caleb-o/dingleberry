@@ -47,6 +47,7 @@ impl PartialOrd for Module {
 pub struct Coroutine {
     pub call_frame: CallFrame,
     pub stack_items: Box<[Value]>,
+    pub is_complete: bool,
     pub result: Value,
 }
 

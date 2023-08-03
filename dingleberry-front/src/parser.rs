@@ -139,6 +139,15 @@ impl Parser {
         Err(self.error(String::from(msg)))
     }
 
+    fn consume_maybe(&mut self, expected: TokenKind) -> bool {
+        if self.current.kind == expected {
+            self.current = self.lexer.next();
+            return true;
+        }
+
+        false
+    }
+
     fn consume_any(&mut self, expected: &[TokenKind], msg: &str) -> Result<(), SpruceErr> {
         for kind in expected {
             if self.current.kind == *kind {
@@ -944,9 +953,12 @@ impl Parser {
         self.consume_here();
 
         let parameters = self.collect_params(TokenKind::LParen, TokenKind::RParen)?;
+        let yields = self.consume_maybe(TokenKind::Yields);
         let body = self.collect_body()?;
 
-        Ok(Ast::new_function(token, false, true, parameters, body))
+        Ok(Ast::new_function(
+            token, false, true, yields, parameters, body,
+        ))
     }
 
     fn include(&mut self) -> Result<Box<Ast>, SpruceErr> {
@@ -1023,10 +1035,11 @@ impl Parser {
 
         let parameters = self.collect_params(TokenKind::LParen, TokenKind::RParen)?;
 
+        let yields = self.consume_maybe(TokenKind::Yields);
         let body = self.collect_body()?;
 
         Ok(Ast::new_function(
-            identifier, is_static, false, parameters, body,
+            identifier, is_static, false, yields, parameters, body,
         ))
     }
 

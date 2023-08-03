@@ -213,7 +213,11 @@ impl Lexer {
                 &[("his", TokenKind::This), ("rue", TokenKind::True)],
             ),
 
-            'y' => self.check_if_matches(start, len, &[("ield", TokenKind::Yield)]),
+            'y' => self.check_if_matches(
+                start,
+                len,
+                &[("ield", TokenKind::Yield), ("ields", TokenKind::Yields)],
+            ),
             'w' => self.check_if_matches(start, len, &[("hile", TokenKind::While)]),
 
             '_' => self.check_if_matches(start, len, &[("_", TokenKind::UnderscoreUnderscore)]),

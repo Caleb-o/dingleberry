@@ -63,6 +63,7 @@ pub enum TokenKind {
     This,
     Loop,
     Yield,
+    Yields,
     Resume,
 
     EndOfFile,

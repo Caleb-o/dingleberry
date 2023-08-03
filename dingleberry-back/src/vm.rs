@@ -578,6 +578,7 @@ impl VM {
                     let coroutine = self.allocate(ObjectData::Coroutine(Rc::new(Coroutine {
                         call_frame,
                         stack_items: stack_items.into(),
+                        is_complete: false,
                         result: value,
                     })));
                     self.push(Value::Object(coroutine));
@@ -593,6 +594,26 @@ impl VM {
                     }
 
                     self.restore_state_from_coroutine(maybe_frame);
+                }
+
+                ByteCode::WrapYielded => {
+                    let value = self.pop();
+                    let call_frame = self.call_stack.last().unwrap();
+
+                    // Reduce a pop to preserve return value
+                    let stack_items = self
+                        .stack
+                        .drain(call_frame.stack_start..self.stack.len())
+                        .collect::<Vec<_>>();
+
+                    let coroutine = self.allocate(ObjectData::Coroutine(Rc::new(Coroutine {
+                        call_frame: call_frame.clone(),
+                        stack_items: stack_items.into(),
+                        // WrapYielded is used in cases of return, so it should be considered complete
+                        is_complete: true,
+                        result: value,
+                    })));
+                    self.push(Value::Object(coroutine));
                 }
 
                 ByteCode::Call(arg_count) => {
@@ -642,15 +663,21 @@ impl VM {
     }
 
     fn restore_state_from_coroutine(&mut self, value: Value) {
-        let Value::Object(obj) = value else { unreachable!() };
+        let Value::Object(obj) = &value else { unreachable!() };
         let obj = obj.upgrade().unwrap();
         let ObjectData::Coroutine(co) = &*obj.data.borrow() else { unreachable!() };
 
         let Coroutine {
             call_frame,
             stack_items,
+            is_complete,
             ..
         } = &**co;
+
+        if *is_complete {
+            self.push(value);
+            return;
+        }
 
         // Need to update the stack start, otherwise it is wack
         let mut new_frame = call_frame.clone();

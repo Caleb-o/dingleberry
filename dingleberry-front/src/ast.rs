@@ -223,6 +223,7 @@ impl Ast {
         token: Token,
         is_static: bool,
         anonymous: bool,
+        yields: bool,
         parameters: Option<Vec<Box<Ast>>>,
         body: Box<Ast>,
     ) -> Box<Self> {
@@ -231,6 +232,7 @@ impl Ast {
             data: AstData::Function(Function {
                 is_static,
                 anonymous,
+                yields,
                 parameters,
                 body,
             }),
