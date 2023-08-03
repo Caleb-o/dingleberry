@@ -103,7 +103,10 @@ impl VM {
         } else {
             let obj = self.allocate(ObjectData::Str(data));
             if intern {
-                self.string_allocs += 1;
+                if self.running {
+                    self.string_allocs += 1;
+                }
+
                 self.interned_strings
                     .insert(hash, obj.clone().upgrade().unwrap());
             }
