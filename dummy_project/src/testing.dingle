@@ -2,11 +2,11 @@ struct Tester(tests) {
     let tests;
     let succeeded, failed, total;
 
-    fn new(to_be_tested) {
-        let mut t = Tester(to_be_tested);
+    static fn new(tests) {
+        let mut t = this(tests);
         t.succeeded = 0;
         t.failed = 0;
-        t.total = len(to_be_tested);
+        t.total = len(tests);
 
         t
     }
@@ -24,7 +24,6 @@ struct Tester(tests) {
             let id = current_test[0];
             let test_fn = current_test[1];
 
-            
             print('[', index, '] Running ', id, '... ');
 
             if test_fn() {

@@ -311,12 +311,6 @@ impl VM {
 
                 let mut values = HashMap::with_capacity(struct_def.items.len());
 
-                if let Some(init_fields) = &struct_def.init_items {
-                    for field in init_fields.iter().rev() {
-                        values.insert(field.clone(), self.pop());
-                    }
-                }
-
                 for (id, val) in &struct_def.items {
                     if let Value::Object(obj) = val {
                         if let ObjectData::Function(func, _) =
@@ -329,6 +323,12 @@ impl VM {
                     }
 
                     values.insert(id.clone(), val.clone());
+                }
+
+                if let Some(init_fields) = &struct_def.init_items {
+                    for field in init_fields.iter().rev() {
+                        values.insert(field.clone(), self.pop());
+                    }
                 }
 
                 let struct_ = self.allocate(ObjectData::StructInstance(Rc::new(StructInstance {
@@ -749,16 +749,16 @@ impl VM {
                     self.push(value);
                 }
 
-                _ => {
+                n => {
                     return Err(SpruceErr::new(
-                        format!("Cannot index into item '{item}'"),
+                        format!("Cannot index into item '{item}' with '{n}'"),
                         SpruceErrData::VM,
                     ))
                 }
             }
         } else {
             return Err(SpruceErr::new(
-                format!("Cannot index into item '{item}'"),
+                format!("Cannot index into item '{item}' with '{value}'"),
                 SpruceErrData::VM,
             ));
         }

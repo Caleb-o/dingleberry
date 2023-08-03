@@ -128,6 +128,14 @@ fn nt_dbg_stack(vm: &mut VM, _: Vec<Value>) -> Value {
 }
 
 fn nt_dbg_globals(vm: &mut VM, _: Vec<Value>) -> Value {
-    println!("Globals {:?}", vm.globals.values());
+    print!("[");
+    for (idx, value) in vm.globals.values().enumerate() {
+        print!("{value}");
+
+        if idx < vm.globals.len() - 1 {
+            print!(", ");
+        }
+    }
+    println!("]");
     Value::None
 }

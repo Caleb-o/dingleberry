@@ -289,11 +289,13 @@ impl<'a> ByteCompiler<'a> {
         struct_def.items.shrink_to_fit();
 
         let identifier = struct_def.identifier.clone();
-        let struct_ = self.vm.allocate(ObjectData::StructDef(Rc::new(struct_def)));
-        self.vm.constants.push(Value::Object(struct_.clone()));
+        let struct_def = self.vm.allocate(ObjectData::StructDef(Rc::new(struct_def)));
+        self.vm.constants.push(Value::Object(struct_def.clone()));
 
         if self.current_kind.is_none() {
-            self.vm.globals.insert(identifier, Value::Object(struct_));
+            self.vm
+                .globals
+                .insert(identifier, Value::Object(struct_def));
         }
 
         (self.vm.constants.len() - 1) as u16
@@ -874,10 +876,6 @@ impl<'a> ByteCompiler<'a> {
         Ok(())
     }
 
-    fn visit_var_assign_equal(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        todo!()
-    }
-
     fn visit_if_statement(&mut self, statement: &IfStatement) -> Result<(), SpruceErr> {
         let IfStatement {
             condition,
@@ -988,14 +986,6 @@ impl<'a> ByteCompiler<'a> {
         Ok(())
     }
 
-    fn visit_switch_statement(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        todo!()
-    }
-
-    fn visit_switch_case(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        todo!()
-    }
-
     fn visit_return_statement(
         &mut self,
         item: &Box<Ast>,
@@ -1067,11 +1057,12 @@ impl<'a> ByteCompiler<'a> {
 
     fn visit_include(&mut self, incl: &Include) -> Result<(), SpruceErr> {
         if let Some(module_name) = &incl.module_name {
+            let last_item = self.current_kind.take();
+
             let last_container = self.container_ctx;
             self.container_ctx = ContainerContext::Module;
 
             self.open_module(module_name.lexeme.as_ref().unwrap().get_slice().to_string());
-
             self.visit(&incl.root)?;
 
             _ = self.close_module();
@@ -1080,9 +1071,11 @@ impl<'a> ByteCompiler<'a> {
                 .map_err(|e| self.error(e));
 
             self.container_ctx = last_container;
+            self.current_kind = last_item;
         } else {
             self.visit(&incl.root)?;
         }
+
         Ok(())
     }
 
@@ -1259,8 +1252,8 @@ impl<'a> ByteCompiler<'a> {
 
         match last_ctx {
             ContainerContext::Module | ContainerContext::Struct => {
-                let struct_ = &self.vm.constants[struct_idx as usize];
-                self.add_item_to_current(struct_identifier, struct_.clone());
+                let struct_def = &self.vm.constants[struct_idx as usize];
+                self.add_item_to_current(struct_identifier, struct_def.clone());
             }
 
             _ => {
