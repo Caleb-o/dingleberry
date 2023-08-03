@@ -649,13 +649,11 @@ impl VM {
             ..
         } = &**co;
 
-        self.call_stack.push(CallFrame {
-            ip: call_frame.ip,
-            identifier: call_frame.identifier.clone(),
-            arg_count: call_frame.arg_count,
-            stack_start: self.stack.len(),
-            function: call_frame.function.clone(),
-        });
+        // Need to update the stack start, otherwise it is wack
+        let mut new_frame = call_frame.clone();
+        new_frame.stack_start = self.stack.len();
+
+        self.call_stack.push(new_frame);
         self.stack.extend_from_slice(&stack_items);
     }
 
