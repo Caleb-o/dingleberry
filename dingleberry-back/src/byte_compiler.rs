@@ -37,6 +37,7 @@ enum ContainerContext {
 
 #[derive(Debug, Clone)]
 pub struct Function {
+    pub is_static: bool,
     pub identifier: Option<String>,
     pub arg_count: u8,
     pub code: Vec<ByteCode>,
@@ -65,8 +66,9 @@ impl PartialOrd for Function {
 }
 
 impl Function {
-    fn new(identifier: Option<String>, arg_count: u8) -> Rc<Self> {
+    fn new(is_static: bool, identifier: Option<String>, arg_count: u8) -> Rc<Self> {
         Rc::new(Self {
+            is_static,
             identifier,
             arg_count,
             code: Vec::new(),
@@ -104,7 +106,7 @@ pub struct ByteCompiler<'a> {
 impl<'a> ByteCompiler<'a> {
     pub fn new(vm: &'a mut VM) -> Self {
         Self {
-            current_func: Some(Function::new(Some("script".into()), 0)),
+            current_func: Some(Function::new(true, Some("script".into()), 0)),
             current_kind: None,
             symbol_table: SymbolTable::new(),
             ctx: Context::None,
@@ -267,9 +269,10 @@ impl<'a> ByteCompiler<'a> {
     }
 
     #[inline]
-    fn open_struct(&mut self, identifier: String) {
+    fn open_struct(&mut self, is_static: bool, identifier: String) {
         self.symbol_table.new_func();
         self.set_current_struct(StructDef {
+            is_static,
             identifier,
             init_items: None,
             items: HashMap::new(),
@@ -311,8 +314,8 @@ impl<'a> ByteCompiler<'a> {
     }
 
     #[inline]
-    fn open_function(&mut self, identifier: Option<String>, arg_count: u8) {
-        self.current_func = Some(Function::new(identifier, arg_count));
+    fn open_function(&mut self, is_static: bool, identifier: Option<String>, arg_count: u8) {
+        self.current_func = Some(Function::new(is_static, identifier, arg_count));
         self.symbol_table.new_func();
     }
 
@@ -643,6 +646,7 @@ impl<'a> ByteCompiler<'a> {
         func: &dingleberry_front::ast_inner::Function,
     ) -> Result<(), SpruceErr> {
         let dingleberry_front::ast_inner::Function {
+            is_static,
             anonymous,
             parameters,
             body,
@@ -666,6 +670,7 @@ impl<'a> ByteCompiler<'a> {
         }
 
         self.open_function(
+            *is_static,
             identifier.clone(),
             parameters
                 .as_ref()
@@ -1144,6 +1149,7 @@ impl<'a> ByteCompiler<'a> {
         struct_def: &dingleberry_front::ast_inner::StructDef,
     ) -> Result<(), SpruceErr> {
         let dingleberry_front::ast_inner::StructDef {
+            is_static,
             init_fields,
             declarations,
         } = struct_def;
@@ -1152,10 +1158,61 @@ impl<'a> ByteCompiler<'a> {
         self.container_ctx = ContainerContext::Struct;
 
         let struct_identifier = item.token.lexeme.as_ref().unwrap().get_slice().to_string();
-        self.open_struct(struct_identifier.clone());
+        self.open_struct(*is_static, struct_identifier.clone());
 
         for item in declarations {
             self.visit(item)?;
+
+            match &item.data {
+                AstData::FieldVarDeclarations(decls) if *is_static => {
+                    for decl in decls {
+                        let AstData::FieldVarDeclaration = decl.data else { unreachable!() };
+
+                        let file_path = Self::get_filepath(&decl.token);
+                        self.error(SpruceErr::new(
+                            format!(
+                            "Static struct '{struct_identifier}' cannot contain let bindings '{}'",
+                            decl.token.lexeme.as_ref().unwrap().get_slice()
+                        ),
+                            SpruceErrData::Compiler {
+                                file_path: file_path.clone(),
+                                line: decl.token.line,
+                                column: decl.token.column,
+                            },
+                        ));
+                    }
+                }
+
+                AstData::Function(func) if *is_static => {
+                    if !func.is_static {
+                        let file_path = Self::get_filepath(&item.token);
+                        self.error(SpruceErr::new(
+                            format!("Static struct '{struct_identifier}' cannot contain non-static function '{}'", item.token.lexeme.as_ref().unwrap().get_slice()),
+                            SpruceErrData::Compiler {
+                                file_path: file_path.clone(),
+                                line: item.token.line,
+                                column: item.token.column,
+                            },
+                        ));
+                    }
+                }
+
+                AstData::StructDef(struct_def) if *is_static => {
+                    if !struct_def.is_static {
+                        let file_path = Self::get_filepath(&item.token);
+                        self.error(SpruceErr::new(
+                            format!("Static struct '{struct_identifier}' cannot contain non-static struct '{}'", item.token.lexeme.as_ref().unwrap().get_slice()),
+                            SpruceErrData::Compiler {
+                                file_path: file_path.clone(),
+                                line: item.token.line,
+                                column: item.token.column,
+                            },
+                        ));
+                    }
+                }
+
+                _ => {}
+            }
         }
 
         if let Some(init_fields) = init_fields {

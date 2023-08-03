@@ -185,7 +185,11 @@ impl Lexer {
             's' => self.check_if_matches(
                 start,
                 len,
-                &[("truct", TokenKind::Struct), ("witch", TokenKind::Switch)],
+                &[
+                    ("truct", TokenKind::Struct),
+                    ("witch", TokenKind::Switch),
+                    ("tatic", TokenKind::Static),
+                ],
             ),
             'l' => self.check_if_matches(
                 start,

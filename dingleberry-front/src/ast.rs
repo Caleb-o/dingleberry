@@ -90,12 +90,14 @@ impl Ast {
 
     pub fn new_struct_def(
         token: Token,
+        is_static: bool,
         init_fields: Option<Vec<Token>>,
         declarations: Vec<Box<Ast>>,
     ) -> Box<Self> {
         Box::new(Self {
             token,
             data: AstData::StructDef(StructDef {
+                is_static,
                 init_fields,
                 declarations,
             }),
@@ -214,6 +216,7 @@ impl Ast {
 
     pub fn new_function(
         token: Token,
+        is_static: bool,
         anonymous: bool,
         parameters: Option<Vec<Box<Ast>>>,
         body: Box<Ast>,
@@ -221,6 +224,7 @@ impl Ast {
         Box::new(Self {
             token,
             data: AstData::Function(Function {
+                is_static,
                 anonymous,
                 parameters,
                 body,

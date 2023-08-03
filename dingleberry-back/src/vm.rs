@@ -174,6 +174,7 @@ impl VM {
         }
 
         let mut struct_ = StructDef {
+            is_static: false,
             identifier: identifier.clone(),
             init_items: None,
             items: HashMap::new(),
@@ -297,17 +298,41 @@ impl VM {
                 return Ok(());
             }
 
-            ObjectData::StructDef(struct_) => {
-                let mut values = struct_.items.clone();
+            ObjectData::StructDef(struct_def) => {
+                if struct_def.is_static {
+                    return Err(SpruceErr::new(
+                        format!(
+                            "Cannot instantiate static struct '{}'",
+                            struct_def.identifier
+                        ),
+                        SpruceErrData::VM,
+                    ));
+                }
 
-                if let Some(init_fields) = &struct_.init_items {
+                let mut values = HashMap::with_capacity(struct_def.items.len());
+
+                if let Some(init_fields) = &struct_def.init_items {
                     for field in init_fields.iter().rev() {
                         values.insert(field.clone(), self.pop());
                     }
                 }
 
+                for (id, val) in &struct_def.items {
+                    if let Value::Object(obj) = val {
+                        if let ObjectData::Function(func, _) =
+                            &*obj.upgrade().unwrap().data.borrow()
+                        {
+                            if func.is_static {
+                                continue;
+                            }
+                        }
+                    }
+
+                    values.insert(id.clone(), val.clone());
+                }
+
                 let struct_ = self.allocate(ObjectData::StructInstance(Rc::new(StructInstance {
-                    struct_name: struct_.identifier.clone(),
+                    struct_name: struct_def.identifier.clone(),
                     values,
                 })));
 

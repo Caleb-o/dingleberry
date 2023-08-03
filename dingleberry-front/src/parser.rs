@@ -7,10 +7,7 @@ use std::{
 
 use dingleberry_shared::error::{SpruceErr, SpruceErrData};
 
-use crate::{
-    ast_inner::{BinaryOp, Function},
-    source::Source,
-};
+use crate::{ast_inner::Function, source::Source};
 
 use super::{
     ast::{Ast, AstData},
@@ -552,7 +549,22 @@ impl Parser {
         }
     }
 
-    fn module_statement(&mut self) -> Result<Box<Ast>, SpruceErr> {
+    fn static_declaration(&mut self) -> Result<Box<Ast>, SpruceErr> {
+        self.consume_here();
+
+        match self.current.kind {
+            TokenKind::Struct => self.struct_declaration(true),
+            TokenKind::Function => self.function_declaration(true),
+            _ => {
+                return Err(self.error(
+                    "Unknown item after static declaration. Can only have functions and struct declarations"
+                        .into(),
+                ))
+            }
+        }
+    }
+
+    fn module_declaration(&mut self) -> Result<Box<Ast>, SpruceErr> {
         self.consume_here();
 
         let identifier = self.get_current();
@@ -563,10 +575,10 @@ impl Parser {
 
         while self.current.kind != TokenKind::EndOfFile && self.current.kind != TokenKind::RCurly {
             statements.push(match self.current.kind {
-                TokenKind::Module => self.module_statement()?,
-                TokenKind::Function => self.function()?,
-                TokenKind::Struct => self.struct_statement()?,
-                // TokenKind::Let => self.let_declaration()?,
+                TokenKind::Module => self.module_declaration()?,
+                TokenKind::Function => self.function_declaration(false)?,
+                TokenKind::Struct => self.struct_declaration(false)?,
+
                 _ => {
                     return Err(self.error(
                         "Unknown item in module body. Can only have functions and modules".into(),
@@ -579,7 +591,7 @@ impl Parser {
         Ok(Ast::new_module(identifier, statements))
     }
 
-    fn struct_statement(&mut self) -> Result<Box<Ast>, SpruceErr> {
+    fn struct_declaration(&mut self, is_static: bool) -> Result<Box<Ast>, SpruceErr> {
         self.consume_here();
 
         let identifier = self.get_current();
@@ -615,8 +627,10 @@ impl Parser {
 
         while self.current.kind != TokenKind::EndOfFile && self.current.kind != TokenKind::RCurly {
             statements.push(match self.current.kind {
-                TokenKind::Struct => self.struct_statement()?,
-                TokenKind::Function => self.function()?,
+                TokenKind::Static => self.static_declaration()?,
+
+                TokenKind::Struct => self.struct_declaration(false)?,
+                TokenKind::Function => self.function_declaration(false)?,
                 TokenKind::Let => {
                     let let_decl = self.field_let_declaration()?;
                     self.consume(TokenKind::SemiColon, "Expect semicolon after struct let member")?;
@@ -632,7 +646,12 @@ impl Parser {
         }
 
         self.consume(TokenKind::RCurly, "Expect '}' after struct body")?;
-        Ok(Ast::new_struct_def(identifier, init_fields, statements))
+        Ok(Ast::new_struct_def(
+            identifier,
+            is_static,
+            init_fields,
+            statements,
+        ))
     }
 
     fn if_expression_statement(&mut self, force_else: bool) -> Result<Box<Ast>, SpruceErr> {
@@ -745,7 +764,7 @@ impl Parser {
     fn statement(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let node = match self.current.kind {
             TokenKind::Function => {
-                let func = self.function()?;
+                let func = self.function_declaration(false)?;
                 if let AstData::Function(Function { body, .. }) = &func.data {
                     if let AstData::Return(_) = &body.data {
                         self.consume(TokenKind::SemiColon, "Expect ';' after function statement")?;
@@ -882,7 +901,7 @@ impl Parser {
         let parameters = self.collect_params(TokenKind::LParen, TokenKind::RParen)?;
         let body = self.collect_body()?;
 
-        Ok(Ast::new_function(token, true, parameters, body))
+        Ok(Ast::new_function(token, false, true, parameters, body))
     }
 
     fn include(&mut self) -> Result<Box<Ast>, SpruceErr> {
@@ -951,7 +970,7 @@ impl Parser {
         }
     }
 
-    fn function(&mut self) -> Result<Box<Ast>, SpruceErr> {
+    fn function_declaration(&mut self, is_static: bool) -> Result<Box<Ast>, SpruceErr> {
         self.consume_here();
 
         let identifier = self.get_current();
@@ -961,7 +980,9 @@ impl Parser {
 
         let body = self.collect_body()?;
 
-        Ok(Ast::new_function(identifier, false, parameters, body))
+        Ok(Ast::new_function(
+            identifier, is_static, false, parameters, body,
+        ))
     }
 
     fn collect_let_decl(&mut self) -> Result<Box<Ast>, SpruceErr> {
@@ -1031,13 +1052,16 @@ impl Parser {
                     statements.push(self.include()?);
                     self.consume(TokenKind::SemiColon, "Expect ';' after include statement")?;
                 }
-                TokenKind::Module => statements.push(self.module_statement()?),
-                TokenKind::Struct => statements.push(self.struct_statement()?),
+
+                TokenKind::Static => statements.push(self.static_declaration()?),
+
+                TokenKind::Module => statements.push(self.module_declaration()?),
+                TokenKind::Struct => statements.push(self.struct_declaration(false)?),
                 TokenKind::If => statements.push(self.if_expression_statement(false)?),
                 TokenKind::For => statements.push(self.for_statement()?),
                 TokenKind::Loop => statements.push(self.loop_statement()?),
                 TokenKind::Function => {
-                    let func = self.function()?;
+                    let func = self.function_declaration(false)?;
                     if let AstData::Function(Function { body, .. }) = &func.data {
                         if let AstData::Return(_) = &body.data {
                             self.consume(
@@ -1072,7 +1096,7 @@ fn simple_binary_operation() {
 
     assert!(matches!(expr.data, AstData::BinaryOp { .. }));
 
-    let AstData::BinaryOp(BinaryOp { lhs, rhs }) = expr.data else { unreachable!() };
+    let AstData::BinaryOp(crate::ast_inner::BinaryOp { lhs, rhs }) = expr.data else { unreachable!() };
     assert!(matches!(lhs.data, AstData::Literal));
     assert!(matches!(rhs.data, AstData::Literal));
 }

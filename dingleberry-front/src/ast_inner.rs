@@ -16,6 +16,7 @@ pub struct LogicalOp {
 
 #[derive(Debug, Clone)]
 pub struct Function {
+    pub is_static: bool,
     pub anonymous: bool,
     pub parameters: Option<Vec<Box<Ast>>>,
     pub body: Box<Ast>,
@@ -105,6 +106,7 @@ pub struct SwitchCase {
 
 #[derive(Debug, Clone)]
 pub struct StructDef {
+    pub is_static: bool,
     pub init_fields: Option<Vec<Token>>,
     pub declarations: Vec<Box<Ast>>,
 }

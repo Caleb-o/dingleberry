@@ -50,6 +50,7 @@ pub enum TokenKind {
     Switch,
     Function,
     Return,
+    Static,
     Identifier,
     And,
     Or,

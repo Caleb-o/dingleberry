@@ -45,6 +45,7 @@ impl PartialOrd for Module {
 
 #[derive(Clone, PartialEq)]
 pub struct StructDef {
+    pub is_static: bool,
     pub identifier: String,
     pub init_items: Option<Vec<String>>,
     pub items: HashMap<String, Value>,
