@@ -23,6 +23,25 @@ pub fn get_identifier_or_string(token: &Token) -> String {
     }
 }
 
+#[inline]
+pub fn type_name_to_int(type_name: &str) -> u8 {
+    match type_name {
+        "none" => 0,
+        "number" => 1,
+        "boolean" => 2,
+        "string" => 3,
+        "list" => 4,
+        "tuple" => 5,
+        "function" => 6,
+        "nativefn" => 7,
+        "module" => 8,
+        "struct" | "instance" => 9,
+        "nativeobj" => 10,
+        "coroutine" => 11,
+        _ => u8::MAX,
+    }
+}
+
 fn nt_print(_: &mut VM, args: Vec<Value>) -> Value {
     for item in args {
         print!("{item}");
@@ -58,6 +77,28 @@ fn nt_len(_: &mut VM, args: Vec<Value>) -> Value {
     } as f32;
 
     Value::Number(value)
+}
+
+fn nt_type_of(_: &mut VM, args: Vec<Value>) -> Value {
+    let type_name = match &args[0] {
+        Value::None => "none",
+        Value::Number(_) => "number",
+        Value::Boolean(_) => "boolean",
+        Value::Object(obj) => match &*obj.upgrade().unwrap().data.borrow() {
+            ObjectData::Str(_) => "string",
+            ObjectData::List(_) => "list",
+            ObjectData::Tuple(_) => "tuple",
+            ObjectData::Function(_, _) => "function",
+            ObjectData::NativeFunction(_) => "nativefn",
+            ObjectData::Module(_) => "module",
+            ObjectData::StructDef(_) | ObjectData::StructInstance(_) => "struct",
+            ObjectData::NativeObject(_) => "nativeobj",
+            ObjectData::Coroutine(_) => "coroutine",
+        },
+    };
+
+    let type_idx = type_name_to_int(type_name);
+    Value::Number(type_idx as f32)
 }
 
 fn nt_fields_of(vm: &mut VM, args: Vec<Value>) -> Value {

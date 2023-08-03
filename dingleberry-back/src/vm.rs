@@ -692,6 +692,7 @@ impl VM {
         self.register_function("println", None, &super::nt_println);
         self.register_function("len", Some(1), &super::nt_len);
         self.register_function("freeze", Some(1), &super::nt_freeze);
+        self.register_function("type_of", Some(1), &super::nt_type_of);
         self.register_function("fields_of", Some(1), &super::nt_fields_of);
 
         // Debugging functions

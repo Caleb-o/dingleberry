@@ -176,6 +176,8 @@ impl Parser {
                 Ok(Ast::new_this(token))
             }
 
+            TokenKind::At => self.type_of_expr(),
+
             TokenKind::LParen => {
                 self.consume_here();
                 let expr = self.expression()?;
@@ -420,6 +422,23 @@ impl Parser {
 
     fn expression(&mut self) -> Result<Box<Ast>, SpruceErr> {
         self.assignment()
+    }
+
+    fn type_of_expr(&mut self) -> Result<Box<Ast>, SpruceErr> {
+        self.consume_here();
+
+        let type_name = self.get_current();
+        self.consume_any(
+            &[
+                TokenKind::Identifier,
+                TokenKind::None,
+                TokenKind::Module,
+                TokenKind::Struct,
+            ],
+            "Expect identifier type name after '@'",
+        )?;
+
+        Ok(Ast::new_type_of(type_name))
     }
 
     fn expression_statement(&mut self) -> Result<Box<Ast>, SpruceErr> {

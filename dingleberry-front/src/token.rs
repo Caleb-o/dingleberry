@@ -22,6 +22,7 @@ pub enum TokenKind {
     Less,
     LessEqual,
 
+    At,
     SemiColon,
     Colon,
     Comma,

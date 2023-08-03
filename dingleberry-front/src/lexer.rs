@@ -56,6 +56,8 @@ impl Lexer {
             '|' => self.make_char_token_matches(TokenKind::Error, '|', TokenKind::Or),
             '&' => self.make_char_token_matches(TokenKind::Error, '&', TokenKind::And),
 
+            '@' => self.make_char_token(TokenKind::At),
+
             '(' => self.make_char_token(TokenKind::LParen),
             ')' => self.make_char_token(TokenKind::RParen),
             '[' => self.make_char_token(TokenKind::LSquare),

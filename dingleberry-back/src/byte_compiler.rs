@@ -18,6 +18,7 @@ use crate::{
     get_identifier_or_string,
     object::{Module, ObjectData, StructDef},
     symbol_table::{Symbol, SymbolTable},
+    type_name_to_int,
     value::Value,
     vm::VM,
 };
@@ -424,6 +425,8 @@ impl<'a> ByteCompiler<'a> {
 
             &AstData::Yield(ref maybe_expr) => self.visit_yield(item, maybe_expr),
             &AstData::Resume(ref expr) => self.visit_resume(expr),
+
+            &AstData::TypeOf => self.visit_type_of(item),
 
             &AstData::Body(ref statements) => self.visit_body(statements, true),
             &AstData::IfStatement(ref statement) => self.visit_if_statement(statement),
@@ -1020,6 +1023,35 @@ impl<'a> ByteCompiler<'a> {
     fn visit_resume(&mut self, expr: &Box<Ast>) -> Result<(), SpruceErr> {
         self.visit(expr)?;
         self.func().code.push(ByteCode::Resume);
+        Ok(())
+    }
+
+    fn visit_type_of(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
+        let type_name = item.token.lexeme.as_ref().unwrap().get_slice();
+        let type_idx = type_name_to_int(type_name);
+
+        if type_idx == u8::MAX {
+            let file_path = Self::get_filepath(&item.token);
+
+            self.error(SpruceErr::new(
+                format!("Invalid type name '{type_name}' for type value"),
+                SpruceErrData::Compiler {
+                    file_path,
+                    line: item.token.line,
+                    column: item.token.column,
+                },
+            ));
+        }
+
+        let value = Value::Number(type_idx as f32);
+
+        if let Some(index) = self.find_constant(&value) {
+            self.func().code.push(ByteCode::ConstantByte(index as u8));
+        } else {
+            let index = self.add_constant(value);
+            self.func().code.push(ByteCode::ConstantByte(index as u8));
+        }
+
         Ok(())
     }
 

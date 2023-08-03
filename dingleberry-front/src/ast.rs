@@ -60,6 +60,8 @@ pub enum AstData {
     Yield(Option<Box<Ast>>),
     Resume(Box<Ast>),
 
+    TypeOf,
+
     Return(Option<Box<Ast>>),
     Body(Vec<Box<Ast>>),
     Include(Include),
@@ -267,6 +269,13 @@ impl Ast {
         Box::new(Self {
             token,
             data: AstData::Resume(expression),
+        })
+    }
+
+    pub fn new_type_of(token: Token) -> Box<Self> {
+        Box::new(Self {
+            token,
+            data: AstData::TypeOf,
         })
     }
 
