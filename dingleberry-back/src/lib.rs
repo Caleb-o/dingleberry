@@ -122,6 +122,19 @@ fn nt_freeze(vm: &mut VM, args: Vec<Value>) -> Value {
     }
 }
 
+fn nt_dbg_coroutine_data(_: &mut VM, args: Vec<Value>) -> Value {
+    if let Value::Object(obj) = &args[0] {
+        let obj = obj.upgrade().unwrap();
+        if let ObjectData::Coroutine(co) = &*obj.data.borrow() {
+            println!(
+                "Coroutine: IP {}, Identifier '{}'",
+                co.call_frame.ip, co.call_frame.identifier
+            );
+        };
+    }
+    Value::None
+}
+
 fn nt_dbg_stack(vm: &mut VM, _: Vec<Value>) -> Value {
     println!("Stack {:?}", vm.stack);
     Value::None

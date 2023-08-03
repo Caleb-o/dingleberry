@@ -181,7 +181,11 @@ impl Lexer {
             ),
             'n' => self.check_if_matches(start, len, &[("one", TokenKind::None)]),
             'o' => self.check_if_matches(start, len, &[("r", TokenKind::Or)]),
-            'r' => self.check_if_matches(start, len, &[("eturn", TokenKind::Return)]),
+            'r' => self.check_if_matches(
+                start,
+                len,
+                &[("eturn", TokenKind::Return), ("esume", TokenKind::Resume)],
+            ),
             's' => self.check_if_matches(
                 start,
                 len,
@@ -206,6 +210,8 @@ impl Lexer {
                 len,
                 &[("his", TokenKind::This), ("rue", TokenKind::True)],
             ),
+
+            'y' => self.check_if_matches(start, len, &[("ield", TokenKind::Yield)]),
             'w' => self.check_if_matches(start, len, &[("hile", TokenKind::While)]),
 
             '_' => self.check_if_matches(start, len, &[("_", TokenKind::UnderscoreUnderscore)]),

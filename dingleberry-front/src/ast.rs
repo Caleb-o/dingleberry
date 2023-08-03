@@ -57,6 +57,9 @@ pub enum AstData {
 
     This,
 
+    Yield(Option<Box<Ast>>),
+    Resume(Box<Ast>),
+
     Return(Option<Box<Ast>>),
     Body(Vec<Box<Ast>>),
     Include(Include),
@@ -250,6 +253,20 @@ impl Ast {
         Box::new(Self {
             token,
             data: AstData::This,
+        })
+    }
+
+    pub fn new_yield(token: Token, maybe_expr: Option<Box<Ast>>) -> Box<Self> {
+        Box::new(Self {
+            token,
+            data: AstData::Yield(maybe_expr),
+        })
+    }
+
+    pub fn new_resume(token: Token, expression: Box<Ast>) -> Box<Self> {
+        Box::new(Self {
+            token,
+            data: AstData::Resume(expression),
         })
     }
 

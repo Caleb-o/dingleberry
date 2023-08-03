@@ -61,6 +61,8 @@ pub enum TokenKind {
     Struct,
     This,
     Loop,
+    Yield,
+    Resume,
 
     EndOfFile,
     Error,

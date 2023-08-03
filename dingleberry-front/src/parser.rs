@@ -201,6 +201,8 @@ impl Parser {
 
             TokenKind::If => self.if_expression_statement(true),
 
+            TokenKind::Resume => self.resume_expression(),
+
             TokenKind::Identifier => {
                 let token = self.get_current();
                 self.consume_here();
@@ -761,6 +763,27 @@ impl Parser {
         Ok(Ast::new_return(token, expression))
     }
 
+    fn yield_statement(&mut self) -> Result<Box<Ast>, SpruceErr> {
+        let token = self.get_current();
+        self.consume_here();
+
+        let maybe_expr = if self.current.kind != TokenKind::SemiColon {
+            Some(self.expression()?)
+        } else {
+            None
+        };
+
+        Ok(Ast::new_yield(token, maybe_expr))
+    }
+
+    fn resume_expression(&mut self) -> Result<Box<Ast>, SpruceErr> {
+        let token = self.get_current();
+        self.consume_here();
+
+        let expression = self.expression()?;
+        Ok(Ast::new_resume(token, expression))
+    }
+
     fn statement(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let node = match self.current.kind {
             TokenKind::Function => {
@@ -779,6 +802,9 @@ impl Parser {
             TokenKind::Switch => self.switch_statement()?,
             TokenKind::Let => self.let_declaration()?,
             TokenKind::Return => self.return_statement()?,
+
+            TokenKind::Yield => self.yield_statement()?,
+
             _ => {
                 let node = self.expression()?;
                 let is_stmt = match node.data {

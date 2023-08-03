@@ -10,7 +10,7 @@ use crate::{
     byte_compiler::Function,
     nativefunction::{NativeFn, NativeFunction},
     value::Value,
-    vm::VM,
+    vm::{CallFrame, VM},
 };
 
 #[derive(Clone, PartialEq)]
@@ -41,6 +41,13 @@ impl PartialOrd for Module {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         self.identifier.partial_cmp(&other.identifier)
     }
+}
+
+#[derive(PartialEq)]
+pub struct Coroutine {
+    pub call_frame: CallFrame,
+    pub stack_items: Box<[Value]>,
+    pub result: Value,
 }
 
 #[derive(Clone, PartialEq)]
@@ -99,6 +106,7 @@ pub enum ObjectData {
     StructDef(Rc<StructDef>),
     StructInstance(Rc<StructInstance>),
     NativeObject(Rc<dyn Any>),
+    Coroutine(Rc<Coroutine>),
 }
 
 impl PartialEq for ObjectData {
@@ -112,6 +120,7 @@ impl PartialEq for ObjectData {
             (Self::Module(l0), Self::Module(r0)) => l0 == r0,
             (Self::StructDef(l0), Self::StructDef(r0)) => l0 == r0,
             (Self::StructInstance(l0), Self::StructInstance(r0)) => l0 == r0,
+            (Self::Coroutine(l0), Self::Coroutine(r0)) => l0 == r0,
 
             _ => false,
         }
@@ -140,6 +149,7 @@ impl Debug for ObjectData {
             Self::StructDef(_) => write!(f, "StructDef"),
             Self::StructInstance(_) => write!(f, "StructInstance"),
             Self::NativeObject(_) => write!(f, "NativeObject"),
+            Self::Coroutine(_) => write!(f, "Coroutine"),
         }
     }
 }
@@ -195,6 +205,8 @@ impl Display for ObjectData {
             Self::StructInstance(s) => write!(f, "struct_inst<{}>", s.struct_name),
 
             Self::NativeObject(o) => write!(f, "native_object<{o:?}>"),
+
+            Self::Coroutine(c) => write!(f, "coroutine<{}>", c.call_frame.function),
         }
     }
 }

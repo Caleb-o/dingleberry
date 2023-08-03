@@ -22,6 +22,9 @@ pub enum ByteCode {
     Or,
     And,
 
+    Yield,
+    Resume,
+
     DefineGlobal(u16),
 
     GetLocal(u8),

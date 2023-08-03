@@ -422,6 +422,9 @@ impl<'a> ByteCompiler<'a> {
             &AstData::PropertyGetter(ref getter) => self.visit_property_getter(getter),
             &AstData::PropertySetter(ref setter) => self.visit_property_setter(setter),
 
+            &AstData::Yield(ref maybe_expr) => self.visit_yield(item, maybe_expr),
+            &AstData::Resume(ref expr) => self.visit_resume(expr),
+
             &AstData::Body(ref statements) => self.visit_body(statements, true),
             &AstData::IfStatement(ref statement) => self.visit_if_statement(statement),
             &AstData::This => self.visit_this(item),
@@ -983,6 +986,40 @@ impl<'a> ByteCompiler<'a> {
         let identifier = self.get_string_or_insert(identifier);
         self.func().code.push(ByteCode::PropertySet(identifier));
 
+        Ok(())
+    }
+
+    fn visit_yield(
+        &mut self,
+        item: &Box<Ast>,
+        maybe_expr: &Option<Box<Ast>>,
+    ) -> Result<(), SpruceErr> {
+        if self.ctx == Context::None {
+            let file_path = Self::get_filepath(&item.token);
+
+            self.error(SpruceErr::new(
+                "Cannot yield outside of a function".into(),
+                SpruceErrData::Compiler {
+                    file_path,
+                    line: item.token.line,
+                    column: item.token.column,
+                },
+            ));
+        }
+
+        if let Some(expr) = maybe_expr {
+            self.visit(expr)?;
+        } else {
+            self.func().code.push(ByteCode::None);
+        }
+
+        self.func().code.push(ByteCode::Yield);
+        Ok(())
+    }
+
+    fn visit_resume(&mut self, expr: &Box<Ast>) -> Result<(), SpruceErr> {
+        self.visit(expr)?;
+        self.func().code.push(ByteCode::Resume);
         Ok(())
     }
 

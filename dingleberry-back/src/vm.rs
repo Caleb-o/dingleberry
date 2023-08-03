@@ -11,7 +11,7 @@ use crate::{
     bytecode::ByteCode,
     gc::{GarbageCollector, Roots},
     nativefunction::{NativeFn, NativeFunction},
-    object::{Module, Object, ObjectData, StructDef, StructInstance},
+    object::{Coroutine, Module, Object, ObjectData, StructDef, StructInstance},
     value::Value,
     value_methods,
 };
@@ -19,6 +19,7 @@ use crate::{
 const RUNTIME_INTERNING: bool = true;
 const STRINGS_BEFORE_SWEEP: usize = 64;
 
+#[derive(Clone, PartialEq)]
 pub struct CallFrame {
     pub ip: usize,
     pub identifier: String,
@@ -561,6 +562,36 @@ impl VM {
                     self.stack.push(Value::Object(reference));
                 }
 
+                ByteCode::Yield => {
+                    let value = self.pop();
+                    let call_frame = self.call_stack.pop().unwrap();
+
+                    // Reduce a pop to preserve return value
+                    let stack_items = self
+                        .stack
+                        .drain(call_frame.stack_start..self.stack.len())
+                        .collect::<Vec<_>>();
+
+                    let coroutine = self.allocate(ObjectData::Coroutine(Rc::new(Coroutine {
+                        call_frame,
+                        stack_items: stack_items.into(),
+                        result: value,
+                    })));
+                    self.push(Value::Object(coroutine));
+                }
+
+                ByteCode::Resume => {
+                    let maybe_frame = self.pop();
+                    if !VM::is_coroutine(&maybe_frame) {
+                        return Err(SpruceErr::new(
+                            format!("Cannot resume non-coroutine '{maybe_frame}'"),
+                            SpruceErrData::VM,
+                        ));
+                    }
+
+                    self.restore_state_from_coroutine(maybe_frame);
+                }
+
                 ByteCode::Call(arg_count) => {
                     let function = self.pop();
                     self.call(function, arg_count as usize)?;
@@ -607,6 +638,27 @@ impl VM {
         Ok(())
     }
 
+    fn restore_state_from_coroutine(&mut self, value: Value) {
+        let Value::Object(obj) = value else { unreachable!() };
+        let obj = obj.upgrade().unwrap();
+        let ObjectData::Coroutine(co) = &*obj.data.borrow() else { unreachable!() };
+
+        let Coroutine {
+            call_frame,
+            stack_items,
+            ..
+        } = &**co;
+
+        self.call_stack.push(CallFrame {
+            ip: call_frame.ip,
+            identifier: call_frame.identifier.clone(),
+            arg_count: call_frame.arg_count,
+            stack_start: self.stack.len(),
+            function: call_frame.function.clone(),
+        });
+        self.stack.extend_from_slice(&stack_items);
+    }
+
     fn get_string(&self, index: u16) -> String {
         let constant = &self.constants[index as usize];
         let Value::Object(obj) = constant else { unreachable!() };
@@ -642,6 +694,7 @@ impl VM {
         self.register_function("fields_of", Some(1), &super::nt_fields_of);
 
         // Debugging functions
+        self.register_function("dbg_coroutine_data", None, &super::nt_dbg_coroutine_data);
         self.register_function("dbg_stack", None, &super::nt_dbg_stack);
         self.register_function("dbg_globals", None, &super::nt_dbg_globals);
     }
@@ -666,6 +719,18 @@ impl VM {
     #[inline]
     fn are_numbers(lhs: &Value, rhs: &Value) -> bool {
         matches!(lhs, Value::Number(_)) && lhs.kind_equals(&rhs)
+    }
+
+    #[inline]
+    fn is_coroutine(value: &Value) -> bool {
+        if let Value::Object(obj) = value {
+            return matches!(
+                *obj.upgrade().unwrap().data.borrow(),
+                ObjectData::Coroutine(_)
+            );
+        }
+
+        false
     }
 
     #[inline]

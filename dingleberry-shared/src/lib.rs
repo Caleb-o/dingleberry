@@ -6,6 +6,7 @@ pub struct NativeModuleFlags {
     pub strings: bool,
     pub list: bool,
     pub runtime: bool,
+    pub coroutine: bool,
 }
 
 impl NativeModuleFlags {
@@ -15,6 +16,7 @@ impl NativeModuleFlags {
             strings: true,
             list: true,
             runtime: true,
+            coroutine: true,
         }
     }
 }

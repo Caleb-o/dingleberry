@@ -1,7 +1,4 @@
-use std::{
-    fs::{self},
-    rc::Rc,
-};
+use std::fs::{self};
 
 use dingleberry_back::{object::ObjectData, value::Value, vm::VM};
 use dingleberry_shared::NativeModuleFlags;
@@ -84,6 +81,14 @@ pub fn register_native_objects(vm: &mut VM, native_flags: NativeModuleFlags) {
 
                 Value::None
             });
+        })
+        .unwrap();
+    }
+
+    if native_flags.coroutine {
+        vm.build_module("Coroutine", false, |vm, module| {
+            module.add_func(vm, "is_coroutine", None, &coroutine_is_coroutine);
+            module.add_func(vm, "get", None, &coroutine_get);
         })
         .unwrap();
     }
@@ -211,5 +216,27 @@ fn runtime_gc_collect(vm: &mut VM, _: Vec<Value>) -> Value {
     // Since this can be called by the user, we don't want to bump
     // the next collection size
     vm.collect(false);
+    Value::None
+}
+
+/*
+   === COROUTINE
+*/
+
+fn coroutine_is_coroutine(_: &mut VM, args: Vec<Value>) -> Value {
+    if let Some(obj) = args[0].get_as_object() {
+        if let ObjectData::Coroutine(_) = &*obj.upgrade().unwrap().data.borrow() {
+            return Value::Boolean(true);
+        }
+    }
+    Value::Boolean(false)
+}
+
+fn coroutine_get(_: &mut VM, args: Vec<Value>) -> Value {
+    if let Some(obj) = args[0].get_as_object() {
+        if let ObjectData::Coroutine(co) = &*obj.upgrade().unwrap().data.borrow() {
+            return co.result.clone();
+        }
+    }
     Value::None
 }
