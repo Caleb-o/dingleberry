@@ -330,10 +330,7 @@ impl<'a> ByteCompiler<'a> {
     ) -> Option<u16> {
         self.symbol_table.close_func();
 
-        let func = self.current_func.take().unwrap();
-        self.current_func = last_fn;
-
-        if let Some(c) = func.code.last() {
+        if let Some(c) = self.current_func.as_ref().unwrap().code.last() {
             if *c != ByteCode::Return {
                 if self.ctx == Context::Function(true) {
                     self.func().code.extend([
@@ -355,7 +352,8 @@ impl<'a> ByteCompiler<'a> {
             }
         }
 
-        println!("Code: {:?}", func.code);
+        let func = self.current_func.take().unwrap();
+        self.current_func = last_fn;
 
         if anonymous || self.current_kind.is_some() {
             let obj = self.vm.allocate(ObjectData::Function(func, has_variadic));
