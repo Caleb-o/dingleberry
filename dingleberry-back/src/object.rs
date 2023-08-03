@@ -21,8 +21,8 @@ pub struct Module {
 
 impl Module {
     #[inline]
-    pub fn add_item(&mut self, identifier: &'static str, value: Value) {
-        self.items.insert(identifier.to_string(), value);
+    pub fn add_item(&mut self, identifier: String, value: Value) {
+        self.items.insert(identifier, value);
     }
 
     pub fn add_func(
@@ -52,8 +52,8 @@ pub struct StructDef {
 
 impl StructDef {
     #[inline]
-    pub fn add_item(&mut self, identifier: &'static str, value: Value) {
-        self.items.insert(identifier.to_string(), value);
+    pub fn add_item(&mut self, identifier: String, value: Value) {
+        self.items.insert(identifier, value);
     }
 
     pub fn add_func(

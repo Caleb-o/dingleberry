@@ -246,10 +246,25 @@ impl SymbolTable {
     }
 }
 
+enum CurrentType {
+    Module(Module),
+    StructDef(StructDef),
+}
+
+struct CurrentKind {
+    last: Option<Box<CurrentKind>>,
+    current: CurrentType,
+}
+
+impl CurrentKind {
+    fn new_with(current: CurrentType, last: Option<Box<CurrentKind>>) -> Self {
+        Self { current, last }
+    }
+}
+
 pub struct ByteCompiler<'a> {
     current_func: Option<Rc<Function>>,
-    current_mod: Option<Module>,
-    current_struct: Option<StructDef>,
+    current_kind: Option<CurrentKind>,
     symbol_table: SymbolTable,
     ctx: Context,
     container_ctx: ContainerContext,
@@ -261,8 +276,7 @@ impl<'a> ByteCompiler<'a> {
     pub fn new(vm: &'a mut VM) -> Self {
         Self {
             current_func: Some(Function::new(Some("script".into()), 0)),
-            current_mod: None,
-            current_struct: None,
+            current_kind: None,
             symbol_table: SymbolTable::new(),
             ctx: Context::None,
             container_ctx: ContainerContext::None,
@@ -293,6 +307,14 @@ impl<'a> ByteCompiler<'a> {
         }
 
         Ok(Value::Object(func))
+    }
+
+    fn rollback_last_kind(&mut self) -> CurrentType {
+        let CurrentKind { last, current } = self.current_kind.take().unwrap();
+        if let Some(last) = last {
+            self.current_kind = Some(*last);
+        }
+        current
     }
 
     fn error(&mut self, err: SpruceErr) {
@@ -344,30 +366,71 @@ impl<'a> ByteCompiler<'a> {
         }
     }
 
+    fn set_current_struct(&mut self, struct_def: StructDef) {
+        let last = self.current_kind.take();
+        self.current_kind = Some(CurrentKind::new_with(
+            CurrentType::StructDef(struct_def),
+            last.and_then(|l| Some(Box::new(l))),
+        ));
+    }
+
+    fn set_current_mod(&mut self, module: Module) {
+        let last = self.current_kind.take();
+        self.current_kind = Some(CurrentKind::new_with(
+            CurrentType::Module(module),
+            last.and_then(|l| Some(Box::new(l))),
+        ));
+    }
+
+    fn get_current_struct(&self) -> &StructDef {
+        match &self.current_kind {
+            Some(kind) => {
+                if let CurrentType::StructDef(struct_def) = &kind.current {
+                    return &struct_def;
+                }
+
+                unreachable!();
+            }
+            None => unreachable!(),
+        }
+    }
+
+    fn get_current_struct_mut(&mut self) -> &mut StructDef {
+        match &mut self.current_kind {
+            Some(ref mut kind) => {
+                if let CurrentType::StructDef(ref mut struct_def) = &mut kind.current {
+                    return struct_def;
+                }
+
+                unreachable!();
+            }
+            None => unreachable!(),
+        }
+    }
+
     #[inline]
     fn open_module(&mut self, identifier: String) {
         self.symbol_table.new_func();
-
-        self.current_mod = Some(Module {
+        self.set_current_mod(Module {
             identifier,
             items: HashMap::new(),
         });
     }
 
-    fn close_module(&mut self, last_mod: Option<Module>) -> u16 {
+    fn close_module(&mut self) -> u16 {
         self.symbol_table.close_func();
 
-        let mut module = self.current_mod.take().unwrap();
+        let last_kind = self.rollback_last_kind();
+        let CurrentType::Module(mut module) = last_kind else { unreachable!() };
         // Fields cannot be added after it's created, so we can shrink
         module.items.shrink_to_fit();
 
         let identifier = module.identifier.clone();
-        self.current_mod = last_mod;
 
         let module = self.vm.allocate(ObjectData::Module(Rc::new(module)));
         self.vm.constants.push(Value::Object(module.clone()));
 
-        if self.current_mod.is_none() {
+        if self.current_kind.is_none() {
             self.vm.globals.insert(identifier, Value::Object(module));
         }
 
@@ -377,28 +440,27 @@ impl<'a> ByteCompiler<'a> {
     #[inline]
     fn open_struct(&mut self, identifier: String) {
         self.symbol_table.new_func();
-
-        self.current_struct = Some(StructDef {
+        self.set_current_struct(StructDef {
             identifier,
             init_items: None,
             items: HashMap::new(),
         });
     }
 
-    fn close_struct(&mut self, last_struct: Option<StructDef>) -> u16 {
+    fn close_struct(&mut self) -> u16 {
         self.symbol_table.close_func();
 
-        let mut struct_ = self.current_struct.take().unwrap();
+        let last_kind = self.rollback_last_kind();
+        let CurrentType::StructDef(mut struct_def) = last_kind else { unreachable!() };
+
         // Fields cannot be added after it's created, so we can shrink
-        struct_.items.shrink_to_fit();
+        struct_def.items.shrink_to_fit();
 
-        let identifier = struct_.identifier.clone();
-        self.current_struct = last_struct;
-
-        let struct_ = self.vm.allocate(ObjectData::StructDef(Rc::new(struct_)));
+        let identifier = struct_def.identifier.clone();
+        let struct_ = self.vm.allocate(ObjectData::StructDef(Rc::new(struct_def)));
         self.vm.constants.push(Value::Object(struct_.clone()));
 
-        if self.current_struct.is_none() {
+        if self.current_kind.is_none() {
             self.vm.globals.insert(identifier, Value::Object(struct_));
         }
 
@@ -406,15 +468,17 @@ impl<'a> ByteCompiler<'a> {
     }
 
     #[inline]
-    fn add_item_to_module(&mut self, identifier: String, value: Value) {
-        let module = self.current_mod.as_mut().unwrap();
-        module.items.insert(identifier, value);
-    }
-
-    #[inline]
-    fn add_item_to_struct(&mut self, identifier: String, value: Value) {
-        let struct_ = self.current_struct.as_mut().unwrap();
-        struct_.items.insert(identifier, value);
+    fn add_item_to_current(&mut self, identifier: String, value: Value) {
+        if let Some(ref mut current_type) = &mut self.current_kind {
+            match &mut current_type.current {
+                CurrentType::Module(ref mut module) => module.add_item(identifier, value),
+                CurrentType::StructDef(ref mut struct_def) => {
+                    struct_def.add_item(identifier, value)
+                }
+            }
+        } else {
+            unreachable!();
+        }
     }
 
     #[inline]
@@ -437,7 +501,7 @@ impl<'a> ByteCompiler<'a> {
 
         // println!("Function code {:?}", func.code);
 
-        if anonymous || self.current_mod.is_some() || self.current_struct.is_some() {
+        if anonymous || self.current_kind.is_some() {
             let obj = self.vm.allocate(ObjectData::Function(func, has_variadic));
             self.vm.constants.push(Value::Object(obj));
             Some((self.vm.constants.len() - 1) as u16)
@@ -802,10 +866,8 @@ impl<'a> ByteCompiler<'a> {
         if let Some(index) = self.close_function(*anonymous, has_variadic, last_function) {
             if !anonymous {
                 let func = &self.vm.constants[index as usize];
-                if self.container_ctx == ContainerContext::Module {
-                    self.add_item_to_module(identifier.unwrap().clone(), func.clone());
-                } else if self.container_ctx == ContainerContext::Struct {
-                    self.add_item_to_struct(identifier.unwrap().clone(), func.clone());
+                if self.current_kind.is_some() {
+                    self.add_item_to_current(identifier.unwrap().clone(), func.clone());
                 }
             } else {
                 self.func().code.push(ByteCode::ConstantByte(index as u8));
@@ -916,7 +978,7 @@ impl<'a> ByteCompiler<'a> {
 
     fn visit_field_var_declaration(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
         let field_name = get_identifier_or_string(&item.token);
-        self.add_item_to_struct(field_name, Value::None);
+        self.add_item_to_current(field_name, Value::None);
 
         _ = self
             .symbol_table
@@ -986,10 +1048,10 @@ impl<'a> ByteCompiler<'a> {
 
     fn visit_if_statement(&mut self, statement: &IfStatement) -> Result<(), SpruceErr> {
         let IfStatement {
-            is_expression,
             condition,
             true_body,
             false_body,
+            ..
         } = statement;
 
         self.visit(condition)?;
@@ -1176,12 +1238,11 @@ impl<'a> ByteCompiler<'a> {
             let last_container = self.container_ctx;
             self.container_ctx = ContainerContext::Module;
 
-            let last_mod = self.current_mod.take();
             self.open_module(module_name.lexeme.as_ref().unwrap().get_slice().to_string());
 
             self.visit(&incl.root)?;
 
-            _ = self.close_module(last_mod);
+            _ = self.close_module();
             _ = self
                 .add_symbol(&module_name, false, false)
                 .map_err(|e| self.error(e));
@@ -1226,22 +1287,20 @@ impl<'a> ByteCompiler<'a> {
         self.container_ctx = ContainerContext::Module;
 
         let identifier = item.token.lexeme.as_ref().unwrap().get_slice().to_string();
-        let last_mod = self.current_mod.take();
-
         self.open_module(identifier.clone());
 
         for item in items {
             self.visit(item)?;
         }
 
-        let module_idx = self.close_module(last_mod);
+        let module_idx = self.close_module();
         _ = self
             .add_symbol(&item.token, false, false)
             .map_err(|e| self.error(e));
 
-        if self.current_mod.is_some() {
+        if self.current_kind.is_some() {
             let module = &self.vm.constants[module_idx as usize];
-            self.add_item_to_module(identifier, module.clone());
+            self.add_item_to_current(identifier, module.clone());
         } else {
             self.func()
                 .code
@@ -1266,8 +1325,6 @@ impl<'a> ByteCompiler<'a> {
         self.container_ctx = ContainerContext::Struct;
 
         let struct_identifier = item.token.lexeme.as_ref().unwrap().get_slice().to_string();
-        let last_struct = self.current_struct.take();
-
         self.open_struct(struct_identifier.clone());
 
         for item in declarations {
@@ -1295,13 +1352,7 @@ impl<'a> ByteCompiler<'a> {
                     ));
                 }
 
-                if !self
-                    .current_struct
-                    .as_ref()
-                    .unwrap()
-                    .items
-                    .contains_key(&identifier)
-                {
+                if !self.get_current_struct().items.contains_key(&identifier) {
                     self.error(SpruceErr::new(
                         format!("Struct '{struct_identifier}' does not contain field '{identifier}' to initialise"),
                         SpruceErrData::Compiler {
@@ -1313,24 +1364,19 @@ impl<'a> ByteCompiler<'a> {
                 }
             }
 
-            self.current_struct.as_mut().unwrap().init_items =
+            self.get_current_struct_mut().init_items =
                 Some(current_fields.into_iter().map(|s| s.to_string()).collect());
         }
 
-        let struct_idx = self.close_struct(last_struct);
+        let struct_idx = self.close_struct();
         _ = self
             .add_symbol(&item.token, false, false)
             .map_err(|e| self.error(e));
 
         match last_ctx {
-            ContainerContext::Module => {
+            ContainerContext::Module | ContainerContext::Struct => {
                 let struct_ = &self.vm.constants[struct_idx as usize];
-                self.add_item_to_module(struct_identifier, struct_.clone());
-            }
-
-            ContainerContext::Struct => {
-                let struct_ = &self.vm.constants[struct_idx as usize];
-                self.add_item_to_struct(struct_identifier, struct_.clone());
+                self.add_item_to_current(struct_identifier, struct_.clone());
             }
 
             _ => {
