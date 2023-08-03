@@ -1,4 +1,7 @@
-use std::{fmt::Debug, rc::Weak};
+use std::{
+    fmt::Debug,
+    rc::{Rc, Weak},
+};
 
 use crate::{
     object::{Object, ObjectData},
@@ -40,9 +43,9 @@ impl NativeFunction {
         arg_count: Option<u8>,
         function: NativeFn,
     ) -> Weak<Object> {
-        vm.allocate(ObjectData::NativeFunction(Self::new(
+        vm.allocate(ObjectData::NativeFunction(Rc::new(Self::new(
             identifier, arg_count, function,
-        )))
+        ))))
     }
 }
 

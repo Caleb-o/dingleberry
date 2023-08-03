@@ -93,7 +93,7 @@ pub enum ObjectData {
     List(Vec<Value>),
     Tuple(Box<[Value]>),
     Function(Rc<Function>, bool),
-    NativeFunction(NativeFunction),
+    NativeFunction(Rc<NativeFunction>),
     Module(Rc<Module>),
     StructDef(Rc<StructDef>),
     StructInstance(Rc<StructInstance>),
@@ -202,8 +202,8 @@ impl Display for ObjectData {
 #[derive(PartialEq, PartialOrd)]
 pub struct Object {
     // Mutable state within the object
-    pub data: RefCell<ObjectData>,
     pub marked: Cell<bool>,
+    pub data: RefCell<ObjectData>,
 }
 
 impl Debug for Object {
