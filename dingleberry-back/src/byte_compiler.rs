@@ -15,7 +15,9 @@ use dingleberry_shared::error::{SpruceErr, SpruceErrData};
 
 use crate::{
     bytecode::ByteCode,
+    get_identifier_or_string,
     object::{Module, ObjectData, StructDef},
+    symbol_table::{Symbol, SymbolTable},
     value::Value,
     vm::VM,
 };
@@ -70,179 +72,6 @@ impl Function {
             code: Vec::new(),
             receiver: None,
         })
-    }
-}
-
-#[derive(Debug, Clone)]
-struct Symbol {
-    pub identifier: String,
-    pub mutable: bool,
-    pub index: u16,
-    pub depth: u16,
-}
-
-struct SymbolTable {
-    depth: u16,
-    in_depth: Vec<u16>,
-    scope: Vec<Symbol>,
-}
-
-impl SymbolTable {
-    fn new() -> Self {
-        Self {
-            depth: 0,
-            in_depth: vec![0],
-            scope: Vec::new(),
-        }
-    }
-
-    #[inline]
-    fn is_global(&self) -> bool {
-        self.depth == 0
-    }
-
-    #[inline]
-    fn new_func(&mut self) {
-        self.depth += 1;
-        self.in_depth.push(0);
-    }
-
-    #[inline]
-    fn close_func(&mut self) {
-        self.depth -= 1;
-        self.in_depth.pop();
-        self.scope.retain(|sym| sym.depth <= self.depth);
-    }
-
-    #[inline]
-    fn new_scope(&mut self) {
-        self.depth += 1;
-    }
-
-    #[inline]
-    fn close_scope(&mut self) {
-        self.depth -= 1;
-    }
-
-    fn find_local_symbol(&self, identifier: &str) -> Option<&Symbol> {
-        for (idx, sym) in self.scope.iter().rev().enumerate() {
-            if idx as u16 >= *self.in_depth.last().unwrap() {
-                break;
-            }
-            if identifier == sym.identifier {
-                return Some(sym);
-            }
-        }
-
-        None
-    }
-
-    fn find_symbol_any(&self, identifier: &str) -> Option<Symbol> {
-        for sym in self.scope.iter().rev() {
-            if sym.identifier == identifier {
-                return Some(sym.clone());
-            }
-        }
-
-        None
-    }
-
-    #[inline]
-    fn add_global_symbol(
-        &mut self,
-        identifier: &Token,
-        is_mutable: bool,
-        str_idx: u16,
-    ) -> Result<(), SpruceErr> {
-        let string = identifier.lexeme.as_ref().unwrap().get_slice().to_string();
-
-        if self.find_symbol_any(&string).is_some() {
-            let file_path = identifier
-                .lexeme
-                .as_ref()
-                .map(|span| (*span.source.file_path).clone());
-
-            return Err(SpruceErr::new(
-                format!("Symbol with name '{string}' already exists in scope"),
-                SpruceErrData::Compiler {
-                    file_path,
-                    line: identifier.line,
-                    column: identifier.column,
-                },
-            ));
-        }
-
-        self.scope.push(Symbol {
-            identifier: string,
-            mutable: is_mutable,
-            index: str_idx,
-            depth: 0,
-        });
-        *self.in_depth.last_mut().unwrap() += 1;
-
-        Ok(())
-    }
-
-    #[inline]
-    fn inject_symbol(&mut self, identifier: String, is_mutable: bool) {
-        self.scope.push(Symbol {
-            identifier,
-            mutable: is_mutable,
-            index: *self.in_depth.last().unwrap(),
-            depth: self.depth,
-        });
-        *self.in_depth.last_mut().unwrap() += 1;
-    }
-
-    fn add_symbol(
-        &mut self,
-        token: &Token,
-        is_mutable: bool,
-        allow_override: bool,
-    ) -> Result<(), SpruceErr> {
-        let identifier = get_identifier_or_string(token);
-
-        if !allow_override && self.find_local_symbol(&identifier).is_some() {
-            let file_path = token
-                .lexeme
-                .as_ref()
-                .map(|span| (*span.source.file_path).clone());
-
-            return Err(SpruceErr::new(
-                format!("Symbol with name '{identifier}' already exists in scope"),
-                SpruceErrData::Compiler {
-                    file_path,
-                    line: token.line,
-                    column: token.column,
-                },
-            ));
-        }
-
-        if *self.in_depth.last().unwrap() == u16::MAX {
-            let file_path = token
-                .lexeme
-                .as_ref()
-                .map(|span| (*span.source.file_path).clone());
-
-            return Err(SpruceErr::new(
-                format!("Too many symbols in current scope"),
-                SpruceErrData::Compiler {
-                    file_path,
-                    line: token.line,
-                    column: token.column,
-                },
-            ));
-        }
-
-        self.scope.push(Symbol {
-            identifier,
-            mutable: is_mutable,
-            index: *self.in_depth.last().unwrap(),
-            depth: self.depth,
-        });
-        *self.in_depth.last_mut().unwrap() += 1;
-
-        Ok(())
     }
 }
 
@@ -1407,15 +1236,5 @@ impl<'a> ByteCompiler<'a> {
         self.func().code.push(ByteCode::This);
 
         Ok(())
-    }
-}
-
-fn get_identifier_or_string(token: &Token) -> String {
-    let span = token.lexeme.as_ref().unwrap();
-    if token.kind == TokenKind::Identifier {
-        span.get_slice().to_string()
-    } else {
-        let slice = span.get_slice();
-        slice[1..slice.len() - 1].to_string()
     }
 }

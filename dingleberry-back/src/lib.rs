@@ -1,3 +1,4 @@
+use dingleberry_front::token::{Token, TokenKind};
 use object::ObjectData;
 use value::Value;
 use vm::VM;
@@ -7,9 +8,20 @@ pub mod bytecode;
 pub mod gc;
 pub mod nativefunction;
 pub mod object;
+pub mod symbol_table;
 pub mod value;
 mod value_methods;
 pub mod vm;
+
+pub fn get_identifier_or_string(token: &Token) -> String {
+    let span = token.lexeme.as_ref().unwrap();
+    if token.kind == TokenKind::Identifier {
+        span.get_slice().to_string()
+    } else {
+        let slice = span.get_slice();
+        slice[1..slice.len() - 1].to_string()
+    }
+}
 
 fn nt_print(_: &mut VM, args: Vec<Value>) -> Value {
     for item in args {
