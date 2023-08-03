@@ -328,8 +328,6 @@ impl<'a> ByteCompiler<'a> {
         let func = self.current_func.take().unwrap();
         self.current_func = last_fn;
 
-        // println!("Function code {:?}", func.code);
-
         if anonymous || self.current_kind.is_some() {
             let obj = self.vm.allocate(ObjectData::Function(func, has_variadic));
             self.vm.constants.push(Value::Object(obj));

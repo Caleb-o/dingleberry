@@ -857,7 +857,7 @@ impl VM {
 
                     n => {
                         return Err(SpruceErr::new(
-                            format!("Cannot access property on {n:?}"),
+                            format!("Cannot access property '{property}' on {n}"),
                             SpruceErrData::VM,
                         ))
                     }
@@ -885,7 +885,7 @@ impl VM {
                     self.stack.push(method.clone());
                 } else {
                     return Err(SpruceErr::new(
-                        format!("Cannot access property on {item:?}"),
+                        format!("Cannot access property '{property}' on {item}"),
                         SpruceErrData::VM,
                     ));
                 }
@@ -921,14 +921,14 @@ impl VM {
 
                 n => {
                     return Err(SpruceErr::new(
-                        format!("Cannot access property on {n:?}"),
+                        format!("Cannot access property '{property}' on {n}"),
                         SpruceErrData::VM,
                     ))
                 }
             }
         } else {
             return Err(SpruceErr::new(
-                format!("Cannot access property on {item:?}"),
+                format!("Cannot access property '{property}' on {item}"),
                 SpruceErrData::VM,
             ));
         }
