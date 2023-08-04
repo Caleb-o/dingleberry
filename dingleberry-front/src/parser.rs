@@ -575,6 +575,7 @@ impl Parser {
         match self.current.kind {
             TokenKind::If => self.if_expression_statement(false),
             TokenKind::For => self.for_statement(),
+            TokenKind::While => self.while_statement(),
             _ => self.body(),
         }
     }
@@ -709,11 +710,21 @@ impl Parser {
         ))
     }
 
+    fn while_statement(&mut self) -> Result<Box<Ast>, SpruceErr> {
+        let token = self.get_current();
+        self.consume_here();
+
+        let expression = self.expression()?;
+        let body = self.maybe_single_statement_block()?;
+
+        Ok(Ast::new_while_statement(token, expression, body))
+    }
+
     fn for_statement(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let token = self.get_current();
         self.consume_here();
 
-        let variable = if self.current.kind != TokenKind::LCurly {
+        let variable = if self.current.kind == TokenKind::Let {
             Some(self.let_declaration()?)
         } else {
             None
@@ -814,18 +825,9 @@ impl Parser {
 
     fn statement(&mut self) -> Result<Box<Ast>, SpruceErr> {
         let node = match self.current.kind {
-            TokenKind::Function => {
-                let func = self.function_declaration(false)?;
-                if let AstData::Function(Function { body, .. }) = &func.data {
-                    if let AstData::Return(_) = &body.data {
-                        self.consume(TokenKind::SemiColon, "Expect ';' after function statement")?;
-                    }
-                }
-                func
-            }
-
             TokenKind::If => self.if_expression_statement(false)?,
             TokenKind::For => self.for_statement()?,
+            TokenKind::While => self.while_statement()?,
             TokenKind::Loop => self.loop_statement()?,
             TokenKind::Switch => self.switch_statement()?,
             TokenKind::Let => self.let_declaration()?,
@@ -852,7 +854,8 @@ impl Parser {
             | AstData::IfStatement { .. }
             | AstData::Module(_)
             | AstData::LoopStatement(_)
-            | AstData::ForStatement { .. } => {}
+            | AstData::ForStatement { .. }
+            | AstData::WhileStatement { .. } => {}
 
             _ => self.consume(TokenKind::SemiColon, "Expect ';' after statement")?,
         }

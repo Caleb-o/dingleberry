@@ -63,6 +63,12 @@ pub struct IfStatement {
 }
 
 #[derive(Debug, Clone)]
+pub struct WhileStatement {
+    pub expression: Box<Ast>,
+    pub body: Box<Ast>,
+}
+
+#[derive(Debug, Clone)]
 pub struct ForStatement {
     pub variable: Option<Box<Ast>>,
     pub expression: Option<Box<Ast>>,

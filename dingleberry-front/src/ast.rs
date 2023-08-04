@@ -3,7 +3,7 @@ use std::rc::Rc;
 use crate::ast_inner::{
     BinaryOp, ForStatement, Function, FunctionCall, IfStatement, Include, IndexGetter, IndexSetter,
     LogicalOp, PropertyGetter, PropertySetter, StructDef, SwitchCase, SwitchStatement, VarAssign,
-    VarAssignEqual, VarDeclaration,
+    VarAssignEqual, VarDeclaration, WhileStatement,
 };
 
 use super::token::Token;
@@ -43,6 +43,7 @@ pub enum AstData {
     VarAssignEqual(VarAssignEqual),
 
     IfStatement(IfStatement),
+    WhileStatement(WhileStatement),
     ForStatement(ForStatement),
     LoopStatement(Box<Ast>),
 
@@ -303,6 +304,13 @@ impl Ast {
                 true_body,
                 false_body,
             }),
+        })
+    }
+
+    pub fn new_while_statement(token: Token, expression: Box<Ast>, body: Box<Ast>) -> Box<Self> {
+        Box::new(Self {
+            token,
+            data: AstData::WhileStatement(WhileStatement { expression, body }),
         })
     }
 

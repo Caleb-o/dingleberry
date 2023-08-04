@@ -7,7 +7,7 @@ use dingleberry_front::{
     ast::{Ast, AstData},
     ast_inner::{
         BinaryOp, ForStatement, FunctionCall, IfStatement, Include, IndexGetter, IndexSetter,
-        LogicalOp, PropertyGetter, PropertySetter, VarAssign, VarDeclaration,
+        LogicalOp, PropertyGetter, PropertySetter, VarAssign, VarDeclaration, WhileStatement,
     },
     token::{Token, TokenKind},
 };
@@ -436,6 +436,7 @@ impl<'a> ByteCompiler<'a> {
             &AstData::LogicalOp(ref logic) => self.visit_logical_op(item, logic),
 
             &AstData::ForStatement(ref fstmt) => self.visit_for_statement(fstmt),
+            &AstData::WhileStatement(ref wstmt) => self.visit_while_statement(wstmt),
             &AstData::LoopStatement(ref body) => self.visit_loop_statement(body),
 
             &AstData::IndexGetter(ref getter) => self.visit_index_getter(getter),
@@ -954,6 +955,22 @@ impl<'a> ByteCompiler<'a> {
         } else {
             todo!()
         }
+
+        Ok(())
+    }
+
+    fn visit_while_statement(&mut self, wstmt: &WhileStatement) -> Result<(), SpruceErr> {
+        let WhileStatement { expression, body } = wstmt;
+
+        let before_expr = self.func().code.len();
+        self.visit(expression)?;
+        let before_loop = self.func().code.len();
+        self.func().code.push(ByteCode::Error);
+
+        self.visit(body)?;
+        self.func().code.push(ByteCode::Jump(before_expr as u16));
+
+        self.func().code[before_loop] = ByteCode::JumpNot(self.func().code.len() as u16);
 
         Ok(())
     }
