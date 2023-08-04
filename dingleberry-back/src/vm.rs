@@ -390,11 +390,18 @@ impl VM {
                         print!("{receiver}:");
                     }
 
-                    println!(
-                        "{}({})",
-                        frame.identifier,
-                        if func.arg_count > 0 { "..." } else { "" }
-                    );
+                    print!("{}(", frame.identifier);
+                    if func.arg_count > 0 {
+                        let arg_c = func.arg_count as usize;
+                        for idx in 0..arg_c {
+                            print!("{}", self.stack[frame.stack_start + idx]);
+
+                            if idx < arg_c - 1 {
+                                print!(", ");
+                            }
+                        }
+                    }
+                    println!(")");
                 }
                 _ => unreachable!(),
             }
