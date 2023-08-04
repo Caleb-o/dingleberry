@@ -13,6 +13,7 @@
   "categories": [
     "Programming Languages"
   ],
+  "repository": {},
   "contributes": {
     "languages": [
       {

@@ -2,6 +2,8 @@
   "name": "dingleberry",
   "patterns": [
     { "include": "#comments" },
+    { "include": "#type-name" },
+    { "include": "#function-name" },
     { "include": "#keywords" },
     { "include": "#identifiers" },
     { "include": "#numbers" },
@@ -15,6 +17,22 @@
           "begin": "//",
           "end": "\n",
           "name": "comment.line.double-slash"
+        }
+      ]
+    },
+    "type-name": {
+      "patterns": [
+        {
+          "name": "support.type",
+          "match": "(?<=@)[a-z]+"
+        }
+      ]
+    },
+    "function-name": {
+      "patterns": [
+        {
+          "name": "support.function",
+          "match": "(?<=(fn ))([a-zA-Z0-9_]+)"
         }
       ]
     },
