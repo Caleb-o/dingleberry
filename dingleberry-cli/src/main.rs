@@ -18,8 +18,8 @@ mod native_types;
 
 const SCRIPT_TEMPLATE: &'static str = "module Program {
     fn main {
-        # Print 'Hello, World!' to the terminal
-        print('Hello, World!');
+        // Print 'Hello, World!' to the terminal
+        println('Hello, World!');
     }
 }
 

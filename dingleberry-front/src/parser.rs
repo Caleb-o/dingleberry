@@ -208,10 +208,7 @@ impl Parser {
             }
 
             TokenKind::LSquare => self.array_literal(),
-            TokenKind::LCurly => self.body(),
-
             TokenKind::If => self.if_expression_statement(true),
-
             TokenKind::Resume => self.resume_expression(),
 
             TokenKind::Identifier => {
@@ -832,6 +829,7 @@ impl Parser {
             TokenKind::Switch => self.switch_statement()?,
             TokenKind::Let => self.let_declaration()?,
             TokenKind::Return => self.return_statement()?,
+            TokenKind::LCurly => self.body()?,
 
             TokenKind::Yield => self.yield_statement()?,
 
@@ -855,6 +853,7 @@ impl Parser {
             | AstData::Module(_)
             | AstData::LoopStatement(_)
             | AstData::ForStatement { .. }
+            | AstData::Body(_)
             | AstData::WhileStatement { .. } => {}
 
             _ => self.consume(TokenKind::SemiColon, "Expect ';' after statement")?,

@@ -5,6 +5,7 @@ use vm::VM;
 
 pub mod byte_compiler;
 pub mod bytecode;
+pub mod debug;
 pub mod gc;
 pub mod nativefunction;
 pub mod object;
@@ -173,6 +174,17 @@ fn nt_dbg_coroutine_data(_: &mut VM, args: Vec<Value>) -> Value {
             );
         };
     }
+    Value::None
+}
+
+fn nt_dbg_print_function(vm: &mut VM, _: Vec<Value>) -> Value {
+    let call_frame = vm.get_callstack().last().unwrap();
+
+    let obj = &call_frame.function;
+    if let ObjectData::Function(f, _) = &*obj.data.borrow() {
+        debug::print_function_code(vm, f);
+    };
+
     Value::None
 }
 

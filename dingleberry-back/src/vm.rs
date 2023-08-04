@@ -9,6 +9,7 @@ use dingleberry_shared::error::{SpruceErr, SpruceErrData};
 use crate::{
     byte_compiler::Function,
     bytecode::ByteCode,
+    debug,
     gc::{GarbageCollector, Roots},
     nativefunction::{NativeFn, NativeFunction},
     object::{Coroutine, Module, Object, ObjectData, StructDef, StructInstance},
@@ -402,8 +403,11 @@ impl VM {
     }
 
     fn run(&mut self) -> Result<(), SpruceErr> {
+        // debug::print_function_code(&self, &self.get_function());
+
         while self.running {
             let instruction = self.get_next_inst();
+
             match instruction {
                 ByteCode::ConstantByte => {
                     let index = self.read_u8() as usize;
@@ -752,6 +756,7 @@ impl VM {
 
         // Debugging functions
         self.register_function("dbg_coroutine_data", None, &super::nt_dbg_coroutine_data);
+        self.register_function("dbg_print_function", None, &super::nt_dbg_print_function);
         self.register_function("dbg_stack", None, &super::nt_dbg_stack);
         self.register_function("dbg_globals", None, &super::nt_dbg_globals);
     }
@@ -1188,11 +1193,6 @@ impl VM {
         let function = self.get_function();
         let frame = self.call_stack.last_mut().unwrap();
 
-        if function.code.len() == 0 {
-            self.stack.push(Value::None);
-            return ByteCode::Return as u8;
-        }
-
         let code = function.code[frame.ip];
         frame.ip += 1;
 
@@ -1201,6 +1201,11 @@ impl VM {
 
     #[inline]
     fn get_next_inst(&mut self) -> ByteCode {
+        if self.get_function().code.len() == 0 {
+            self.stack.push(Value::None);
+            return ByteCode::Return;
+        }
+
         let b = self.get_next_inst_byte();
         b.into()
     }
