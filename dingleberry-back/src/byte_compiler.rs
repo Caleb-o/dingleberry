@@ -473,8 +473,7 @@ impl<'a> ByteCompiler<'a> {
     }
 
     fn visit_identifier(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        let identifier = item.token.lexeme.as_ref().unwrap().get_slice();
-        let maybe_values = self.symbol_table.find_symbol_any(identifier);
+        let maybe_values = self.symbol_table.find_symbol_any(&item.token)?;
 
         match maybe_values {
             Some(Symbol { index, depth, .. }) => {
@@ -494,6 +493,7 @@ impl<'a> ByteCompiler<'a> {
                 }
             }
             None => {
+                let identifier = item.token.lexeme.as_ref().unwrap().get_slice();
                 let index = self.get_string_or_insert(identifier.to_string());
                 self.write_op_u16(ByteCode::GetGlobal, index);
             }
@@ -716,6 +716,10 @@ impl<'a> ByteCompiler<'a> {
                 .unwrap_or_default(),
         );
 
+        if *anonymous {
+            self.symbol_table.lock();
+        }
+
         let mut has_variadic = false;
         if let Some(parameters) = parameters {
             for (idx, param) in parameters.iter().enumerate() {
@@ -767,6 +771,10 @@ impl<'a> ByteCompiler<'a> {
             } else {
                 self.write_op_u8(ByteCode::ConstantByte, index as u8);
             }
+        }
+
+        if *anonymous {
+            self.symbol_table.unlock();
         }
 
         self.ctx = last_ctx;
@@ -893,13 +901,12 @@ impl<'a> ByteCompiler<'a> {
         let VarAssign { lhs, expression } = &assign;
         self.visit(expression)?;
 
-        let identifier = lhs.token.lexeme.as_ref().unwrap().get_slice().to_string();
         if let Some(Symbol {
             identifier,
             mutable,
             index,
             depth,
-        }) = self.symbol_table.find_symbol_any(&identifier)
+        }) = self.symbol_table.find_symbol_any(&lhs.token)?
         {
             if !mutable {
                 let file_path = Self::get_filepath(&item.token);
@@ -921,6 +928,7 @@ impl<'a> ByteCompiler<'a> {
             };
         } else {
             let file_path = Self::get_filepath(&item.token);
+            let identifier = lhs.token.lexeme.as_ref().unwrap().get_slice();
 
             self.error(SpruceErr::new(
                 format!("Binding '{identifier}' does not exist"),

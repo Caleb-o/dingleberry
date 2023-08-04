@@ -9,7 +9,6 @@ use dingleberry_shared::error::{SpruceErr, SpruceErrData};
 use crate::{
     byte_compiler::Function,
     bytecode::ByteCode,
-    debug,
     gc::{GarbageCollector, Roots},
     nativefunction::{NativeFn, NativeFunction},
     object::{Coroutine, Module, Object, ObjectData, StructDef, StructInstance},

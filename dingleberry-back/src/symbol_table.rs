@@ -13,6 +13,7 @@ pub struct Symbol {
 
 pub struct SymbolTable {
     depth: u16,
+    locked_at: u16,
     in_depth: Vec<u16>,
     scope: Vec<Symbol>,
 }
@@ -21,9 +22,25 @@ impl SymbolTable {
     pub fn new() -> Self {
         Self {
             depth: 0,
+            locked_at: 0,
             in_depth: vec![0],
             scope: Vec::new(),
         }
+    }
+
+    #[inline]
+    pub fn lock(&mut self) {
+        self.locked_at = self.depth;
+    }
+
+    #[inline]
+    pub fn unlock(&mut self) {
+        self.locked_at = 0;
+    }
+
+    #[inline]
+    pub fn is_locked(&self) -> bool {
+        self.locked_at > 0
     }
 
     #[inline]
@@ -67,14 +84,29 @@ impl SymbolTable {
         None
     }
 
-    pub fn find_symbol_any(&self, identifier: &str) -> Option<Symbol> {
+    pub fn find_symbol_any(&self, identifier: &Token) -> Result<Option<Symbol>, SpruceErr> {
+        let sliced_id = identifier.lexeme.as_ref().unwrap().get_slice();
+
         for sym in self.scope.iter().rev() {
-            if sym.identifier == identifier {
-                return Some(sym.clone());
+            if self.locked_at > 0 && sym.depth <= self.locked_at && sym.depth != 0 {
+                continue;
+            }
+
+            if sym.identifier == sliced_id {
+                return Ok(Some(sym.clone()));
             }
         }
 
-        None
+        if self.is_locked() {
+            let file_path = identifier
+                .lexeme
+                .as_ref()
+                .map(|span| (*span.source.file_path).clone());
+
+            return Err(SpruceErr::new(format!("Cannot find '{sliced_id}' as it is outside of locked bounds. This is usually because an anonymous function is looking for a symbol outside its scope or is not global"), SpruceErrData::Compiler { file_path, line: identifier.line, column: identifier.column }));
+        }
+
+        Ok(None)
     }
 
     #[inline]
@@ -86,7 +118,7 @@ impl SymbolTable {
     ) -> Result<(), SpruceErr> {
         let string = identifier.lexeme.as_ref().unwrap().get_slice().to_string();
 
-        if self.find_symbol_any(&string).is_some() {
+        if self.find_symbol_any(&identifier)?.is_some() {
             let file_path = identifier
                 .lexeme
                 .as_ref()
