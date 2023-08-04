@@ -1,9 +1,9 @@
 use std::rc::Rc;
 
 use crate::ast_inner::{
-    BinaryOp, ForStatement, Function, FunctionCall, IfStatement, Include, IndexGetter, IndexSetter,
-    LogicalOp, PropertyGetter, PropertySetter, StructDef, SwitchCase, SwitchStatement, VarAssign,
-    VarAssignEqual, VarDeclaration, WhileStatement,
+    BinaryOp, ClassDef, ForStatement, Function, FunctionCall, IfStatement, Include, IndexGetter,
+    IndexSetter, LogicalOp, PropertyGetter, PropertySetter, StructDef, SwitchCase, SwitchStatement,
+    VarAssign, VarAssignEqual, VarDeclaration, WhileStatement,
 };
 
 use super::token::Token;
@@ -19,7 +19,6 @@ pub enum AstData {
     Identifier,
     Literal,
     SymbolLiteral,
-    StructLiteral(Vec<(Token, Option<Box<Ast>>)>),
     TupleLiteral(Vec<Box<Ast>>),
     ArrayLiteral(Vec<Box<Ast>>),
     ExpressionStatement(bool, Box<Ast>),
@@ -68,6 +67,7 @@ pub enum AstData {
     Include(Include),
     Module(Vec<Box<Ast>>),
     StructDef(StructDef),
+    ClassDef(ClassDef),
     Program(Vec<Box<Ast>>),
     Empty,
 }
@@ -110,6 +110,24 @@ impl Ast {
         })
     }
 
+    pub fn new_class_def(
+        token: Token,
+        is_static: bool,
+        init_fields: Option<Vec<Token>>,
+        super_class: Option<Box<Ast>>,
+        declarations: Vec<Box<Ast>>,
+    ) -> Box<Self> {
+        Box::new(Self {
+            token,
+            data: AstData::ClassDef(ClassDef {
+                is_static,
+                init_fields,
+                super_class,
+                declarations,
+            }),
+        })
+    }
+
     pub fn new_program(token: Token, body: Vec<Box<Ast>>) -> Box<Self> {
         Box::new(Self {
             token,
@@ -135,13 +153,6 @@ impl Ast {
         Box::new(Self {
             token,
             data: AstData::SymbolLiteral,
-        })
-    }
-
-    pub fn new_struct_literal(token: Token, values: Vec<(Token, Option<Box<Ast>>)>) -> Box<Self> {
-        Box::new(Self {
-            token,
-            data: AstData::StructLiteral(values),
         })
     }
 

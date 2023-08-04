@@ -60,6 +60,7 @@ pub enum TokenKind {
     UnderscoreUnderscore,
     Module,
     Struct,
+    Class,
     This,
     Loop,
     Yield,

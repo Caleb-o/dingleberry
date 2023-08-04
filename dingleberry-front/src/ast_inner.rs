@@ -117,3 +117,11 @@ pub struct StructDef {
     pub init_fields: Option<Vec<Token>>,
     pub declarations: Vec<Box<Ast>>,
 }
+
+#[derive(Debug, Clone)]
+pub struct ClassDef {
+    pub is_static: bool,
+    pub init_fields: Option<Vec<Token>>,
+    pub super_class: Option<Box<Ast>>,
+    pub declarations: Vec<Box<Ast>>,
+}

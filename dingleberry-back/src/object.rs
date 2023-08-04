@@ -59,6 +59,15 @@ pub struct StructDef {
     pub items: HashMap<String, Value>,
 }
 
+#[derive(Clone, PartialEq)]
+pub struct ClassDef {
+    pub is_static: bool,
+    pub identifier: String,
+    pub init_items: Option<Vec<String>>,
+    pub super_class: Option<Value>,
+    pub items: HashMap<String, Value>,
+}
+
 impl StructDef {
     #[inline]
     pub fn add_item(&mut self, identifier: String, value: Value) {
@@ -83,9 +92,39 @@ impl PartialOrd for StructDef {
     }
 }
 
+impl ClassDef {
+    #[inline]
+    pub fn add_item(&mut self, identifier: String, value: Value) {
+        self.items.insert(identifier, value);
+    }
+
+    pub fn add_func(
+        &mut self,
+        vm: &mut VM,
+        identifier: &'static str,
+        param_count: Option<u8>,
+        func: NativeFn,
+    ) {
+        let value = vm.create_function(identifier, param_count, func);
+        self.items.insert(identifier.to_string(), value);
+    }
+}
+
+impl PartialOrd for ClassDef {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.identifier.partial_cmp(&other.identifier)
+    }
+}
+
 #[derive(Clone, PartialEq)]
 pub struct StructInstance {
     pub struct_name: String,
+    pub values: HashMap<String, Value>,
+}
+
+#[derive(Clone, PartialEq)]
+pub struct ClassInstance {
+    pub class_name: String,
     pub values: HashMap<String, Value>,
 }
 
@@ -105,7 +144,9 @@ pub enum ObjectData {
     NativeFunction(Rc<NativeFunction>),
     Module(Rc<Module>),
     StructDef(Rc<StructDef>),
+    ClassDef(Rc<ClassDef>),
     StructInstance(Rc<StructInstance>),
+    ClassInstance(Rc<ClassInstance>),
     NativeObject(Rc<dyn Any>),
     Coroutine(Rc<Coroutine>),
 }
@@ -120,6 +161,7 @@ impl PartialEq for ObjectData {
             (Self::NativeFunction(l0), Self::NativeFunction(r0)) => l0 == r0,
             (Self::Module(l0), Self::Module(r0)) => l0 == r0,
             (Self::StructDef(l0), Self::StructDef(r0)) => l0 == r0,
+            (Self::ClassDef(l0), Self::ClassDef(r0)) => l0 == r0,
             (Self::StructInstance(l0), Self::StructInstance(r0)) => l0 == r0,
             (Self::Coroutine(l0), Self::Coroutine(r0)) => l0 == r0,
 
@@ -148,7 +190,9 @@ impl Debug for ObjectData {
             Self::NativeFunction(_) => write!(f, "NativeFunction"),
             Self::Module { .. } => write!(f, "Module"),
             Self::StructDef(_) => write!(f, "StructDef"),
+            Self::ClassDef(_) => write!(f, "ClassDef"),
             Self::StructInstance(_) => write!(f, "StructInstance"),
+            Self::ClassInstance(_) => write!(f, "ClassInstance"),
             Self::NativeObject(_) => write!(f, "NativeObject"),
             Self::Coroutine(_) => write!(f, "Coroutine"),
         }
@@ -202,8 +246,10 @@ impl Display for ObjectData {
             Self::Module(m) => write!(f, "module<{}>", m.identifier),
 
             Self::StructDef(s) => write!(f, "struct_def<{}>", s.identifier),
+            Self::ClassDef(s) => write!(f, "class_def<{}>", s.identifier),
 
             Self::StructInstance(s) => write!(f, "struct_inst<{}>", s.struct_name),
+            Self::ClassInstance(s) => write!(f, "class_inst<{}>", s.class_name),
 
             Self::NativeObject(o) => write!(f, "native_object<{o:?}>"),
 

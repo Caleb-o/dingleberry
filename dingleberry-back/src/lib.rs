@@ -93,6 +93,7 @@ fn nt_type_of(_: &mut VM, args: Vec<Value>) -> Value {
             ObjectData::NativeFunction(_) => "nativefn",
             ObjectData::Module(_) => "module",
             ObjectData::StructDef(_) | ObjectData::StructInstance(_) => "struct",
+            ObjectData::ClassDef(_) | ObjectData::ClassInstance(_) => "class",
             ObjectData::NativeObject(_) => "nativeobj",
             ObjectData::Coroutine(_) => "coroutine",
         },
@@ -133,6 +134,30 @@ fn nt_fields_of(vm: &mut VM, args: Vec<Value>) -> Value {
 
             ObjectData::StructInstance(struct_inst) => {
                 for field in &struct_inst.values {
+                    let string = vm.allocate_string(field.0.clone(), true);
+                    let tuple = vm.allocate(ObjectData::Tuple(Box::new([
+                        Value::Object(string),
+                        field.1.clone(),
+                    ])));
+
+                    fields.push(Value::Object(tuple));
+                }
+            }
+
+            ObjectData::ClassDef(class_def) => {
+                for field in &class_def.items {
+                    let string = vm.allocate_string(field.0.clone(), true);
+                    let tuple = vm.allocate(ObjectData::Tuple(Box::new([
+                        Value::Object(string),
+                        field.1.clone(),
+                    ])));
+
+                    fields.push(Value::Object(tuple));
+                }
+            }
+
+            ObjectData::ClassInstance(class_inst) => {
+                for field in &class_inst.values {
                     let string = vm.allocate_string(field.0.clone(), true);
                     let tuple = vm.allocate(ObjectData::Tuple(Box::new([
                         Value::Object(string),

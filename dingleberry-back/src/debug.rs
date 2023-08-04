@@ -78,6 +78,8 @@ pub fn print_function_code(vm: &VM, function: &Rc<Function>) {
             Call => byte_instruction(&mut idx, "CALL", &function.code),
             Return => simple_instruction(&mut idx, "RETURN"),
 
+            Inherit => simple_instruction(&mut idx, "INHERIT"),
+
             None => simple_instruction(&mut idx, "NONE"),
             IntoList => short_instruction(&mut idx, "INTO_LIST", &function.code),
             IntoTuple => short_instruction(&mut idx, "INTO_TUPLE", &function.code),

@@ -16,7 +16,7 @@ use dingleberry_shared::error::{SpruceErr, SpruceErrData};
 use crate::{
     bytecode::ByteCode,
     get_identifier_or_string,
-    object::{Module, ObjectData, StructDef},
+    object::{ClassDef, Module, ObjectData, StructDef},
     symbol_table::{Symbol, SymbolTable},
     type_name_to_int,
     value::Value,
@@ -34,6 +34,7 @@ enum ContainerContext {
     None,
     Module,
     Struct,
+    Class,
 }
 
 #[derive(Debug, Clone)]
@@ -81,6 +82,7 @@ impl Function {
 enum CurrentType {
     Module(Module),
     StructDef(StructDef),
+    ClassDef(ClassDef),
 }
 
 struct CurrentKind {
@@ -204,6 +206,14 @@ impl<'a> ByteCompiler<'a> {
         ));
     }
 
+    fn set_current_class(&mut self, class_def: ClassDef) {
+        let last = self.current_kind.take();
+        self.current_kind = Some(CurrentKind::new_with(
+            CurrentType::ClassDef(class_def),
+            last.and_then(|l| Some(Box::new(l))),
+        ));
+    }
+
     fn set_current_mod(&mut self, module: Module) {
         let last = self.current_kind.take();
         self.current_kind = Some(CurrentKind::new_with(
@@ -230,6 +240,19 @@ impl<'a> ByteCompiler<'a> {
             Some(ref mut kind) => {
                 if let CurrentType::StructDef(ref mut struct_def) = &mut kind.current {
                     return struct_def;
+                }
+
+                unreachable!();
+            }
+            None => unreachable!(),
+        }
+    }
+
+    fn get_current_class_mut(&mut self) -> &mut ClassDef {
+        match &mut self.current_kind {
+            Some(ref mut kind) => {
+                if let CurrentType::ClassDef(ref mut class_def) = &mut kind.current {
+                    return class_def;
                 }
 
                 unreachable!();
@@ -301,6 +324,45 @@ impl<'a> ByteCompiler<'a> {
     }
 
     #[inline]
+    fn open_class(&mut self, is_static: bool, identifier: String) {
+        self.symbol_table.new_func();
+        self.set_current_class(ClassDef {
+            is_static,
+            identifier,
+            init_items: None,
+            super_class: None,
+            items: HashMap::new(),
+        });
+    }
+
+    fn close_class(&mut self, super_class: &Option<Box<Ast>>) -> Result<u16, SpruceErr> {
+        self.symbol_table.close_func();
+
+        let last_kind = self.rollback_last_kind();
+        let CurrentType::ClassDef(mut class_def) = last_kind else { unreachable!() };
+
+        // Fields cannot be added after it's created, so we can shrink
+        class_def.items.shrink_to_fit();
+
+        // This will add the inheritted class at runtime
+        if super_class.is_some() {
+            self.visit(super_class.as_ref().unwrap())?;
+            self.write_op_u16(ByteCode::ConstantShort, self.vm.constants.len() as u16);
+            self.write(ByteCode::Inherit);
+        }
+
+        let identifier = class_def.identifier.clone();
+        let class_def = self.vm.allocate(ObjectData::ClassDef(Rc::new(class_def)));
+        self.vm.constants.push(Value::Object(class_def.clone()));
+
+        if self.current_kind.is_none() {
+            self.vm.globals.insert(identifier, Value::Object(class_def));
+        }
+
+        Ok((self.vm.constants.len() - 1) as u16)
+    }
+
+    #[inline]
     fn add_item_to_current(&mut self, identifier: String, value: Value) {
         if let Some(ref mut current_type) = &mut self.current_kind {
             match &mut current_type.current {
@@ -308,6 +370,7 @@ impl<'a> ByteCompiler<'a> {
                 CurrentType::StructDef(ref mut struct_def) => {
                     struct_def.add_item(identifier, value)
                 }
+                CurrentType::ClassDef(ref mut class_def) => class_def.add_item(identifier, value),
             }
         } else {
             unreachable!();
@@ -463,6 +526,7 @@ impl<'a> ByteCompiler<'a> {
             &AstData::Return(ref expr) => self.visit_return_statement(item, expr),
             &AstData::Module(ref items) => self.visit_module(item, items),
             &AstData::StructDef(ref struct_def) => self.visit_struct_def(item, struct_def),
+            &AstData::ClassDef(ref class_def) => self.visit_class_def(item, class_def),
             &AstData::Identifier => self.visit_identifier(item),
             &AstData::Literal => self.visit_literal(item),
             &AstData::ArrayLiteral(_) => self.visit_array_literal(item),
@@ -1345,6 +1409,20 @@ impl<'a> ByteCompiler<'a> {
                     }
                 }
 
+                AstData::ClassDef(class_def) if *is_static => {
+                    if !class_def.is_static {
+                        let file_path = Self::get_filepath(&item.token);
+                        self.error(SpruceErr::new(
+                            format!("Static class '{struct_identifier}' cannot contain non-static class '{}'", item.token.lexeme.as_ref().unwrap().get_slice()),
+                            SpruceErrData::Compiler {
+                                file_path: file_path.clone(),
+                                line: item.token.line,
+                                column: item.token.column,
+                            },
+                        ));
+                    }
+                }
+
                 _ => {}
             }
         }
@@ -1392,12 +1470,126 @@ impl<'a> ByteCompiler<'a> {
             .map_err(|e| self.error(e));
 
         match last_ctx {
-            ContainerContext::Module | ContainerContext::Struct => {
+            ContainerContext::Module | ContainerContext::Struct | ContainerContext::Class => {
                 let struct_def = &self.vm.constants[struct_idx as usize];
                 self.add_item_to_current(struct_identifier, struct_def.clone());
             }
 
             _ => self.write_op_u8(ByteCode::ConstantByte, struct_idx as u8),
+        }
+
+        self.container_ctx = last_ctx;
+        Ok(())
+    }
+
+    fn visit_class_def(
+        &mut self,
+        item: &Box<Ast>,
+        class_def: &dingleberry_front::ast_inner::ClassDef,
+    ) -> Result<(), SpruceErr> {
+        let dingleberry_front::ast_inner::ClassDef {
+            is_static,
+            init_fields,
+            super_class,
+            declarations,
+        } = class_def;
+
+        let last_ctx = self.container_ctx;
+        self.container_ctx = ContainerContext::Class;
+
+        let class_identifier = item.token.lexeme.as_ref().unwrap().get_slice().to_string();
+        self.open_class(*is_static, class_identifier.clone());
+
+        for item in declarations {
+            self.visit(item)?;
+
+            match &item.data {
+                AstData::Function(func) if *is_static => {
+                    if !func.is_static {
+                        let file_path = Self::get_filepath(&item.token);
+                        self.error(SpruceErr::new(
+                            format!("Static class '{class_identifier}' cannot contain non-static function '{}'", item.token.lexeme.as_ref().unwrap().get_slice()),
+                            SpruceErrData::Compiler {
+                                file_path: file_path.clone(),
+                                line: item.token.line,
+                                column: item.token.column,
+                            },
+                        ));
+                    }
+                }
+
+                AstData::StructDef(struct_def) if *is_static => {
+                    if !struct_def.is_static {
+                        let file_path = Self::get_filepath(&item.token);
+                        self.error(SpruceErr::new(
+                            format!("Static class '{class_identifier}' cannot contain non-static struct '{}'", item.token.lexeme.as_ref().unwrap().get_slice()),
+                            SpruceErrData::Compiler {
+                                file_path: file_path.clone(),
+                                line: item.token.line,
+                                column: item.token.column,
+                            },
+                        ));
+                    }
+                }
+
+                AstData::ClassDef(class_def) if *is_static => {
+                    if !class_def.is_static {
+                        let file_path = Self::get_filepath(&item.token);
+                        self.error(SpruceErr::new(
+                            format!("Static class '{class_identifier}' cannot contain non-static class '{}'", item.token.lexeme.as_ref().unwrap().get_slice()),
+                            SpruceErrData::Compiler {
+                                file_path: file_path.clone(),
+                                line: item.token.line,
+                                column: item.token.column,
+                            },
+                        ));
+                    }
+                }
+
+                _ => {}
+            }
+        }
+
+        if let Some(init_fields) = init_fields {
+            let mut current_field_names = HashSet::new();
+            let mut current_fields = Vec::new();
+
+            for field in init_fields {
+                let identifier = get_identifier_or_string(field);
+                let file_path = Self::get_filepath(&field);
+
+                current_fields.push(identifier.clone());
+
+                if !current_field_names.insert(identifier.clone()) {
+                    self.error(SpruceErr::new(
+                        format!(
+                            "Class '{class_identifier}' already contains init field '{identifier}'"
+                        ),
+                        SpruceErrData::Compiler {
+                            file_path: file_path.clone(),
+                            line: field.line,
+                            column: field.column,
+                        },
+                    ));
+                }
+            }
+
+            self.get_current_class_mut().init_items =
+                Some(current_fields.into_iter().map(|s| s.to_string()).collect());
+        }
+
+        let class_idx = self.close_class(super_class)?;
+        _ = self
+            .add_symbol(&item.token, false, false)
+            .map_err(|e| self.error(e));
+
+        match last_ctx {
+            ContainerContext::Module | ContainerContext::Struct | ContainerContext::Class => {
+                let class_def = &self.vm.constants[class_idx as usize];
+                self.add_item_to_current(class_identifier, class_def.clone());
+            }
+
+            _ => self.write_op_u8(ByteCode::ConstantByte, class_idx as u8),
         }
 
         self.container_ctx = last_ctx;

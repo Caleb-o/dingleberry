@@ -11,7 +11,7 @@ use crate::{
     bytecode::ByteCode,
     gc::{GarbageCollector, Roots},
     nativefunction::{NativeFn, NativeFunction},
-    object::{Coroutine, Module, Object, ObjectData, StructDef, StructInstance},
+    object::{ClassInstance, Coroutine, Module, Object, ObjectData, StructDef, StructInstance},
     value::Value,
     value_methods,
 };
@@ -237,14 +237,20 @@ impl VM {
                 (function.identifier.to_string(), function.arg_count, false)
             }
 
-            ObjectData::StructDef(struct_) => {
-                // TODO: Check for constructor
-                (
-                    struct_.identifier.clone(),
-                    struct_.init_items.as_ref().map(|items| items.len() as u8),
-                    false,
-                )
-            }
+            ObjectData::StructDef(struct_def) => (
+                struct_def.identifier.clone(),
+                struct_def
+                    .init_items
+                    .as_ref()
+                    .map(|items| items.len() as u8),
+                false,
+            ),
+
+            ObjectData::ClassDef(class_def) => (
+                class_def.identifier.clone(),
+                class_def.init_items.as_ref().map(|items| items.len() as u8),
+                false,
+            ),
 
             // TODO: Consider a module constructor
             n @ _ => {
@@ -341,6 +347,45 @@ impl VM {
                 })));
 
                 self.stack.push(Value::Object(struct_));
+                return Ok(());
+            }
+
+            ObjectData::ClassDef(class_def) => {
+                if class_def.is_static {
+                    return Err(SpruceErr::new(
+                        format!("Cannot instantiate static class '{}'", class_def.identifier),
+                        SpruceErrData::VM,
+                    ));
+                }
+
+                let mut values = HashMap::with_capacity(class_def.items.len());
+
+                for (id, val) in &class_def.items {
+                    if let Value::Object(obj) = val {
+                        if let ObjectData::Function(func, _) =
+                            &*obj.upgrade().unwrap().data.borrow()
+                        {
+                            if func.is_static {
+                                continue;
+                            }
+                        }
+                    }
+
+                    values.insert(id.clone(), val.clone());
+                }
+
+                if let Some(init_fields) = &class_def.init_items {
+                    for field in init_fields.iter().rev() {
+                        values.insert(field.clone(), self.pop());
+                    }
+                }
+
+                let class = self.allocate(ObjectData::ClassInstance(Rc::new(ClassInstance {
+                    class_name: class_def.identifier.clone(),
+                    values,
+                })));
+
+                self.stack.push(Value::Object(class));
                 return Ok(());
             }
 
@@ -586,6 +631,46 @@ impl VM {
 
                     let reference = self.allocate(ObjectData::Tuple(moved_values));
                     self.stack.push(Value::Object(reference));
+                }
+
+                ByteCode::Inherit => {
+                    let class = self.pop();
+                    let super_class_v = self.pop();
+
+                    // This is guaranteed by the compiler
+                    let Value::Object(class_o) = &class else { unreachable!() };
+                    let Value::Object(super_class_o) = &super_class_v else {
+                        return Err(SpruceErr::new(
+                            format!("Cannot inherit from non-class value '{super_class_v}'"),
+                            SpruceErrData::VM,
+                        ));
+                    };
+
+                    let class = class_o.upgrade().unwrap();
+                    let super_class = super_class_o.upgrade().unwrap();
+
+                    let mut class_o = class.data.borrow_mut();
+                    let super_class_o = super_class.data.borrow();
+
+                    match (&mut *class_o, &*super_class_o) {
+                        (
+                            ObjectData::ClassDef(ref mut class),
+                            ObjectData::ClassDef(ref super_class),
+                        ) => {
+                            let class_mut = Rc::get_mut(class).unwrap();
+                            class_mut.super_class = Some(super_class_v.clone());
+                            for (k, v) in &super_class.items {
+                                class_mut.items.insert(k.clone(), v.clone());
+                            }
+                        }
+                        _ => {
+                            drop(class_o);
+                            return Err(SpruceErr::new(
+                                format!("Failed to inherit from '{super_class}' into '{class}'"),
+                                SpruceErrData::VM,
+                            ));
+                        }
+                    }
                 }
 
                 ByteCode::Yield => {
@@ -1013,6 +1098,50 @@ impl VM {
                         }
                     }
 
+                    &ObjectData::ClassDef(ref class_def) => {
+                        if let Some(value) = class_def.items.get(&property) {
+                            // Assign receiver to function
+                            if let Value::Object(obj) = &value {
+                                match &mut *obj.upgrade().unwrap().data.borrow_mut() {
+                                    ObjectData::Function(function, _) => {
+                                        Rc::get_mut(function).unwrap().receiver =
+                                            Some(item.clone());
+                                    }
+                                    _ => {}
+                                }
+                            }
+
+                            self.push(value.clone());
+                        } else {
+                            return Err(SpruceErr::new(
+                                format!("Unknown property '{property}' on {item}"),
+                                SpruceErrData::VM,
+                            ));
+                        }
+                    }
+
+                    &ObjectData::ClassInstance(ref class) => {
+                        if let Some(value) = class.values.get(&property) {
+                            // Assign receiver to function
+                            if let Value::Object(obj) = &value {
+                                match &mut *obj.upgrade().unwrap().data.borrow_mut() {
+                                    ObjectData::Function(function, _) => {
+                                        Rc::get_mut(function).unwrap().receiver =
+                                            Some(item.clone());
+                                    }
+                                    _ => {}
+                                }
+                            }
+
+                            self.push(value.clone());
+                        } else {
+                            return Err(SpruceErr::new(
+                                format!("Unknown property '{property}' on {item}"),
+                                SpruceErrData::VM,
+                            ));
+                        }
+                    }
+
                     n => {
                         return Err(SpruceErr::new(
                             format!("Cannot access property '{property}' on {n}"),
@@ -1071,6 +1200,22 @@ impl VM {
                             format!(
                                 "Unknown field '{property}' on struct '{}'",
                                 struct_.struct_name
+                            ),
+                            SpruceErrData::VM,
+                        ));
+                    }
+                }
+
+                &mut ObjectData::ClassInstance(ref mut class) => {
+                    let class = Rc::get_mut(class).unwrap();
+
+                    if class.values.contains_key(&property) {
+                        _ = class.values.insert(property, value);
+                    } else {
+                        return Err(SpruceErr::new(
+                            format!(
+                                "Unknown field '{property}' on struct '{}'",
+                                class.class_name
                             ),
                             SpruceErrData::VM,
                         ));

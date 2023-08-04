@@ -49,6 +49,7 @@ pub enum ByteCode {
     None,
     IntoList,  // count - u16
     IntoTuple, // count - u16
+    Inherit,
 
     CheckIterObj, // count - u16
     MakeIterObj,
@@ -109,8 +110,10 @@ impl From<u8> for ByteCode {
             34 => IntoList,
             35 => IntoTuple,
 
-            36 => CheckIterObj,
-            37 => MakeIterObj,
+            36 => Inherit,
+
+            37 => CheckIterObj,
+            38 => MakeIterObj,
 
             _ => unreachable!(),
         }

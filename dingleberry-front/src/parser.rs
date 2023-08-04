@@ -226,7 +226,6 @@ impl Parser {
             }
 
             TokenKind::Function => self.anon_function(),
-            TokenKind::Colon => self.struct_literal(),
 
             _ => Err(self.error(format!(
                 "Unexpected token found {:?} '{}'",
@@ -479,49 +478,6 @@ impl Parser {
         Ok(Ast::new_array_literal(token, values))
     }
 
-    fn struct_literal(&mut self) -> Result<Box<Ast>, SpruceErr> {
-        let token = self.get_current();
-        self.consume_here();
-
-        self.consume(
-            TokenKind::LCurly,
-            "Expect '{' after ':' to start struct literal",
-        )?;
-
-        let mut values = Vec::new();
-
-        if self.current.kind != TokenKind::RCurly {
-            let identifier = self.get_current();
-            self.consume(TokenKind::Identifier, "Expect identifier as key in struct")?;
-            let mut expr = None;
-
-            if self.current.kind == TokenKind::Colon {
-                self.consume_here();
-                expr = Some(self.expression()?);
-            }
-
-            values.push((identifier, expr));
-
-            while self.current.kind == TokenKind::Comma {
-                self.consume_here();
-                let identifier = self.get_current();
-                self.consume(TokenKind::Identifier, "Expect identifier as key in struct")?;
-                let mut expr = None;
-
-                if self.current.kind == TokenKind::Colon {
-                    self.consume_here();
-                    expr = Some(self.expression()?);
-                }
-
-                values.push((identifier, expr));
-            }
-        }
-
-        self.consume(TokenKind::RCurly, "Expect '}' after struct literal")?;
-
-        Ok(Ast::new_struct_literal(token, values))
-    }
-
     fn function_call(&mut self, lhs: Box<Ast>) -> Result<Box<Ast>, SpruceErr> {
         let token = self.get_current();
         self.consume(TokenKind::LParen, "Expect '(' after function identifier")?;
@@ -582,6 +538,7 @@ impl Parser {
 
         match self.current.kind {
             TokenKind::Struct => self.struct_declaration(true),
+            TokenKind::Class => self.class_declaration(true),
             TokenKind::Function => self.function_declaration(true),
             _ => {
                 return Err(self.error(
@@ -606,6 +563,7 @@ impl Parser {
                 TokenKind::Module => self.module_declaration()?,
                 TokenKind::Function => self.function_declaration(false)?,
                 TokenKind::Struct => self.struct_declaration(false)?,
+                TokenKind::Class => self.class_declaration(false)?,
 
                 _ => {
                     return Err(self.error(
@@ -658,6 +616,7 @@ impl Parser {
                 TokenKind::Static => self.static_declaration()?,
 
                 TokenKind::Struct => self.struct_declaration(false)?,
+                TokenKind::Class => self.class_declaration(false)?,
                 TokenKind::Function => self.function_declaration(false)?,
                 TokenKind::Let => {
                     let let_decl = self.field_let_declaration()?;
@@ -667,7 +626,7 @@ impl Parser {
 
                 n => {
                     return Err(self.error(format!(
-                        "Unknown item in struct body '{n:?}'. Can only have structs, functions and let bindings",
+                        "Unknown item in struct body '{n:?}'. Can only have classes, structs, functions and let bindings",
                     )))
                 }
             });
@@ -678,6 +637,74 @@ impl Parser {
             identifier,
             is_static,
             init_fields,
+            statements,
+        ))
+    }
+
+    fn class_declaration(&mut self, is_static: bool) -> Result<Box<Ast>, SpruceErr> {
+        self.consume_here();
+
+        let identifier = self.get_current();
+        self.consume(TokenKind::Identifier, "Expect identifier after 'class'")?;
+
+        let init_fields = if self.current.kind == TokenKind::LParen {
+            self.consume_here();
+            let mut fields = vec![self.get_current()];
+            self.consume_any(
+                &[TokenKind::Identifier, TokenKind::String],
+                "Expected identifier or string in class init fields",
+            )?;
+
+            while self.current.kind == TokenKind::Comma {
+                self.consume_here();
+                fields.push(self.get_current());
+                self.consume(
+                    TokenKind::Identifier,
+                    "Expected identifier in class init fields",
+                )?;
+            }
+
+            self.consume(TokenKind::RParen, "Expect ')' after class init fields")?;
+
+            Some(fields)
+        } else {
+            None
+        };
+
+        let super_class = if self.current.kind == TokenKind::Colon {
+            self.consume_here();
+            let class_name = self.expression()?;
+            Some(class_name)
+        } else {
+            None
+        };
+
+        self.consume(TokenKind::LCurly, "Expect '{' after class identifier")?;
+
+        let mut statements = Vec::new();
+
+        while self.current.kind != TokenKind::EndOfFile && self.current.kind != TokenKind::RCurly {
+            statements.push(match self.current.kind {
+                TokenKind::Static => self.static_declaration()?,
+
+                TokenKind::Struct => self.struct_declaration(false)?,
+                TokenKind::Class => self.class_declaration(false)?,
+                TokenKind::Function => self.function_declaration(false)?,
+
+                n => {
+                    return Err(self.error(format!(
+                        "Unknown item in class body '{n:?}'. Can only have classes, structs and functions.",
+                    )))
+                }
+            });
+        }
+
+        self.consume(TokenKind::RCurly, "Expect '}' after class body")?;
+        Ok(Ast::new_class_def(
+            identifier,
+            is_static,
+            init_fields,
+            super_class,
             statements,
         ))
     }
@@ -1117,6 +1144,7 @@ impl Parser {
 
                 TokenKind::Module => statements.push(self.module_declaration()?),
                 TokenKind::Struct => statements.push(self.struct_declaration(false)?),
+                TokenKind::Class => statements.push(self.class_declaration(false)?),
                 TokenKind::If => statements.push(self.if_expression_statement(false)?),
                 TokenKind::For => statements.push(self.for_statement()?),
                 TokenKind::Loop => statements.push(self.loop_statement()?),

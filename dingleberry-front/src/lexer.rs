@@ -162,6 +162,7 @@ impl Lexer {
         // Fixme: chars.nth seems dumb here
         match lexeme.chars().nth(0).unwrap() {
             'a' => self.check_if_matches(start, len, &[("nd", TokenKind::And)]),
+            'c' => self.check_if_matches(start, len, &[("lass", TokenKind::Class)]),
             'e' => self.check_if_matches(start, len, &[("lse", TokenKind::Else)]),
             'f' => self.check_if_matches(
                 start,
