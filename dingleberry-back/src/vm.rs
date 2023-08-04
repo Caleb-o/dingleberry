@@ -405,12 +405,17 @@ impl VM {
         while self.running {
             let instruction = self.get_next_inst();
             match instruction {
-                ByteCode::ConstantByte(index) => {
+                ByteCode::ConstantByte => {
+                    let index = self.read_u8() as usize;
+                    self.stack.push(self.constants[index].clone());
+                }
+
+                ByteCode::ConstantShort => {
+                    let index = self.read_u16() as usize;
                     self.stack.push(self.constants[index as usize].clone());
                 }
 
                 ByteCode::Pop => _ = self.stack.pop(),
-                ByteCode::PopN(count) => _ = self.stack.drain(self.stack.len() - count as usize..),
 
                 ByteCode::Add | ByteCode::Sub | ByteCode::Mul | ByteCode::Div => {
                     let (lhs, rhs) = self.maybe_get_top_two()?;
@@ -453,25 +458,27 @@ impl VM {
                     });
                 }
 
-                ByteCode::DefineGlobal(index) => {
-                    let id = self.get_string(index);
+                ByteCode::DefineGlobal => {
+                    let id = self.read_string();
 
                     let value = self.pop();
                     self.globals.insert(id, value);
                 }
 
-                ByteCode::SetLocal(index) => {
+                ByteCode::SetLocal => {
+                    let index = self.read_u8();
                     let start = self.func_stack_start();
                     self.stack[start + index as usize] = self.peek();
                 }
 
-                ByteCode::GetLocal(index) => {
+                ByteCode::GetLocal => {
+                    let index = self.read_u8();
                     let start = self.func_stack_start();
                     self.stack.push(self.stack[start + index as usize].clone());
                 }
 
-                ByteCode::SetGlobal(index) => {
-                    let id = self.get_string(index);
+                ByteCode::SetGlobal => {
+                    let id = self.read_string();
 
                     if self.globals.contains_key(&id) {
                         let val = self.peek();
@@ -485,8 +492,8 @@ impl VM {
                     }
                 }
 
-                ByteCode::GetGlobal(index) => {
-                    let id = self.get_string(index);
+                ByteCode::GetGlobal => {
+                    let id = self.read_string();
 
                     match self.globals.get(&id) {
                         Some(value) => {
@@ -516,22 +523,26 @@ impl VM {
                     self.index_item_set(index_item, index_expr, value)?;
                 }
 
-                ByteCode::PropertyGet(index) => {
+                ByteCode::PropertyGet => {
                     let item = self.pop();
-                    let property = self.get_string(index);
+                    let property = self.read_string();
                     self.get_property(item, property)?;
                 }
 
-                ByteCode::PropertySet(index) => {
+                ByteCode::PropertySet => {
                     let item = self.pop();
-                    let property = self.get_string(index);
+                    let property = self.read_string();
                     let value = self.peek();
                     self.set_property(item, property, value)?;
                 }
 
-                ByteCode::Jump(index) => self.set_current_ip(index as usize),
+                ByteCode::Jump => {
+                    let index = self.read_u16();
+                    self.set_current_ip(index as usize);
+                }
 
-                ByteCode::JumpNot(index) => {
+                ByteCode::JumpNot => {
+                    let index = self.read_u16();
                     let value = self.pop();
 
                     match value {
@@ -549,7 +560,8 @@ impl VM {
                     }
                 }
 
-                ByteCode::IntoList(count) => {
+                ByteCode::IntoList => {
+                    let count = self.read_u16();
                     let end = self.stack.len();
                     let moved_values = self.stack.drain(end - count as usize..).collect();
 
@@ -557,7 +569,8 @@ impl VM {
                     self.stack.push(Value::Object(reference));
                 }
 
-                ByteCode::IntoTuple(count) => {
+                ByteCode::IntoTuple => {
+                    let count = self.read_u16();
                     let end = self.stack.len();
                     let moved_values = self.stack.drain(end - count as usize..).collect();
 
@@ -616,7 +629,8 @@ impl VM {
                     self.push(Value::Object(coroutine));
                 }
 
-                ByteCode::Call(arg_count) => {
+                ByteCode::Call => {
+                    let arg_count = self.read_u8();
                     let function = self.pop();
                     self.call(function, arg_count as usize)?;
                 }
@@ -687,8 +701,22 @@ impl VM {
         self.stack.extend_from_slice(&stack_items);
     }
 
-    fn get_string(&self, index: u16) -> String {
-        let constant = &self.constants[index as usize];
+    #[inline]
+    fn read_u8(&mut self) -> u8 {
+        self.get_next_inst_byte()
+    }
+
+    #[inline]
+    fn read_u16(&mut self) -> u16 {
+        let l = self.get_next_inst_byte();
+        let r = self.get_next_inst_byte();
+
+        u16::from_le_bytes([l, r])
+    }
+
+    fn read_string(&mut self) -> String {
+        let index = self.read_u16() as usize;
+        let constant = &self.constants[index];
         let Value::Object(obj) = constant else { unreachable!() };
 
         let obj = obj.upgrade().unwrap();
@@ -1156,18 +1184,24 @@ impl VM {
     }
 
     #[inline]
-    fn get_next_inst(&mut self) -> ByteCode {
+    fn get_next_inst_byte(&mut self) -> u8 {
         let function = self.get_function();
         let frame = self.call_stack.last_mut().unwrap();
 
         if function.code.len() == 0 {
             self.stack.push(Value::None);
-            return ByteCode::Return;
+            return ByteCode::Return as u8;
         }
 
         let code = function.code[frame.ip];
         frame.ip += 1;
 
         code
+    }
+
+    #[inline]
+    fn get_next_inst(&mut self) -> ByteCode {
+        let b = self.get_next_inst_byte();
+        b.into()
     }
 }

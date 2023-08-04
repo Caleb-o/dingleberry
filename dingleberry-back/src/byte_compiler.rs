@@ -41,7 +41,7 @@ pub struct Function {
     pub is_static: bool,
     pub identifier: Option<String>,
     pub arg_count: u8,
-    pub code: Vec<ByteCode>,
+    pub code: Vec<u8>,
 
     pub receiver: Option<Value>,
 }
@@ -120,12 +120,10 @@ impl<'a> ByteCompiler<'a> {
     pub fn compile(mut self, root: Box<Ast>) -> Result<Value, SpruceErr> {
         self.visit(&root)?;
 
+        self.write_many(&[ByteCode::None, ByteCode::Return]);
+
         let ByteCompiler { current_func, .. } = self;
-        let mut current_func = current_func.unwrap();
-        Rc::get_mut(&mut current_func)
-            .unwrap()
-            .code
-            .extend([ByteCode::None, ByteCode::Return]);
+        let current_func = current_func.unwrap();
 
         let func = self
             .vm
@@ -331,24 +329,18 @@ impl<'a> ByteCompiler<'a> {
         self.symbol_table.close_func();
 
         if let Some(c) = self.current_func.as_ref().unwrap().code.last() {
-            if *c != ByteCode::Return {
+            if *c != ByteCode::Return as u8 {
                 if self.ctx == Context::Function(true) {
-                    self.func().code.extend([
-                        ByteCode::None,
-                        ByteCode::WrapYielded,
-                        ByteCode::Return,
-                    ]);
+                    self.write_many(&[ByteCode::None, ByteCode::WrapYielded, ByteCode::Return]);
                 } else {
-                    self.func().code.extend([ByteCode::None, ByteCode::Return]);
+                    self.write_many(&[ByteCode::None, ByteCode::Return]);
                 }
             }
         } else {
             if self.ctx == Context::Function(true) {
-                self.func()
-                    .code
-                    .extend([ByteCode::None, ByteCode::WrapYielded, ByteCode::Return]);
+                self.write_many(&[ByteCode::None, ByteCode::WrapYielded, ByteCode::Return]);
             } else {
-                self.func().code.extend([ByteCode::None, ByteCode::Return]);
+                self.write_many(&[ByteCode::None, ByteCode::Return]);
             }
         }
 
@@ -377,6 +369,37 @@ impl<'a> ByteCompiler<'a> {
     #[inline]
     fn func(&mut self) -> &mut Function {
         Rc::get_mut(self.current_func.as_mut().unwrap()).unwrap()
+    }
+
+    #[inline]
+    fn write(&mut self, op: ByteCode) {
+        self.func().code.push(op as u8);
+    }
+
+    #[inline]
+    fn write_op_u8(&mut self, op: ByteCode, index: u8) {
+        self.func().code.extend(&[op as u8, index]);
+    }
+
+    #[inline]
+    fn write_op_u16(&mut self, op: ByteCode, index: u16) {
+        let [l, r] = index.to_le_bytes();
+        self.func().code.extend(&[op as u8, l, r]);
+    }
+
+    #[inline]
+    fn write_many(&mut self, ops: &[ByteCode]) {
+        self.func()
+            .code
+            .extend(ops.iter().map(|o| *o as u8).collect::<Vec<_>>());
+    }
+
+    #[inline]
+    fn write_op_u16_inplace(&mut self, start: usize, op: ByteCode, value: u16) {
+        let [l, r] = value.to_le_bytes();
+        self.func().code[start] = op as u8;
+        self.func().code[start + 1] = l;
+        self.func().code[start + 2] = r;
     }
 
     #[inline]
@@ -481,14 +504,14 @@ impl<'a> ByteCompiler<'a> {
                 //         .extend([ByteCode::This, ByteCode::PropertyGet(identifier)]);
                 // } else
                 if depth == 0 {
-                    self.func().code.push(ByteCode::GetGlobal(index));
+                    self.write_op_u16(ByteCode::GetGlobal, index);
                 } else {
-                    self.func().code.push(ByteCode::GetLocal(index as u8));
+                    self.write_op_u8(ByteCode::GetLocal, index as u8);
                 }
             }
             None => {
                 let index = self.get_string_or_insert(identifier.to_string());
-                self.func().code.push(ByteCode::GetGlobal(index));
+                self.write_op_u16(ByteCode::GetGlobal, index);
             }
         }
 
@@ -508,10 +531,10 @@ impl<'a> ByteCompiler<'a> {
         };
 
         if let Some(index) = self.find_constant(&value) {
-            self.func().code.push(ByteCode::ConstantByte(index as u8));
+            self.write_op_u8(ByteCode::ConstantByte, index as u8);
         } else {
             let index = self.add_constant(value);
-            self.func().code.push(ByteCode::ConstantByte(index as u8));
+            self.write_op_u8(ByteCode::ConstantByte, index as u8);
         }
 
         Ok(())
@@ -537,9 +560,7 @@ impl<'a> ByteCompiler<'a> {
             ));
         }
 
-        self.func()
-            .code
-            .push(ByteCode::IntoTuple(values.len() as u16));
+        self.write_op_u16(ByteCode::IntoTuple, values.len() as u16);
 
         Ok(())
     }
@@ -564,9 +585,7 @@ impl<'a> ByteCompiler<'a> {
             ));
         }
 
-        self.func()
-            .code
-            .push(ByteCode::IntoList(values.len() as u16));
+        self.write_op_u16(ByteCode::IntoList, values.len() as u16);
 
         Ok(())
     }
@@ -579,12 +598,14 @@ impl<'a> ByteCompiler<'a> {
         if *is_stmt {
             match expr.data {
                 AstData::Body(_) => {}
-                _ => self.func().code.push(ByteCode::Pop),
+                _ => self.write(ByteCode::Pop),
             }
         } else {
-            self.func()
-                .code
-                .extend(&[ByteCode::WrapYielded, ByteCode::Return]);
+            if self.ctx == Context::Function(true) {
+                self.write_many(&[ByteCode::WrapYielded, ByteCode::Return]);
+            } else {
+                self.write(ByteCode::Return);
+            }
         }
 
         Ok(())
@@ -596,7 +617,7 @@ impl<'a> ByteCompiler<'a> {
         self.visit(lhs)?;
         self.visit(rhs)?;
 
-        self.func().code.push(match item.token.kind {
+        self.write(match item.token.kind {
             TokenKind::Plus => ByteCode::Add,
             TokenKind::Minus => ByteCode::Sub,
             TokenKind::Star => ByteCode::Mul,
@@ -610,7 +631,7 @@ impl<'a> ByteCompiler<'a> {
 
     fn visit_unary_op(&mut self, rhs: &Box<Ast>) -> Result<(), SpruceErr> {
         self.visit(rhs)?;
-        self.func().code.push(ByteCode::Negate);
+        self.write(ByteCode::Negate);
 
         Ok(())
     }
@@ -620,7 +641,7 @@ impl<'a> ByteCompiler<'a> {
         self.visit(&logic.lhs)?;
         self.visit(&logic.rhs)?;
 
-        self.func().code.push(match item.token.kind {
+        self.write(match item.token.kind {
             TokenKind::Greater => ByteCode::Greater,
             TokenKind::GreaterEqual => ByteCode::GreaterEq,
 
@@ -735,7 +756,7 @@ impl<'a> ByteCompiler<'a> {
                     self.add_item_to_current(identifier.unwrap().clone(), func.clone());
                 }
             } else {
-                self.func().code.push(ByteCode::ConstantByte(index as u8));
+                self.write_op_u8(ByteCode::ConstantByte, index as u8);
             }
         }
 
@@ -780,9 +801,7 @@ impl<'a> ByteCompiler<'a> {
             ));
         }
 
-        self.func()
-            .code
-            .push(ByteCode::Call(arguments.len() as u8 + literal_call));
+        self.write_op_u8(ByteCode::Call, arguments.len() as u8 + literal_call);
 
         Ok(())
     }
@@ -812,7 +831,7 @@ impl<'a> ByteCompiler<'a> {
                 self.add_constant(string)
             };
 
-            self.func().code.push(ByteCode::DefineGlobal(index));
+            self.write_op_u16(ByteCode::DefineGlobal, index);
 
             self.symbol_table
                 .add_global_symbol(&item.token, *is_mutable, index)?;
@@ -886,11 +905,11 @@ impl<'a> ByteCompiler<'a> {
                 ));
             }
 
-            self.func().code.push(if depth == 0 {
-                ByteCode::SetGlobal(index)
+            if depth == 0 {
+                self.write_op_u16(ByteCode::SetGlobal, index);
             } else {
-                ByteCode::SetLocal(index as u8)
-            });
+                self.write_op_u8(ByteCode::SetLocal, index as u8);
+            };
         } else {
             let file_path = Self::get_filepath(&item.token);
 
@@ -917,24 +936,25 @@ impl<'a> ByteCompiler<'a> {
 
         self.visit(condition)?;
         let jump_loc = self.func().code.len();
-        self.func().code.push(ByteCode::Error);
+        self.write_op_u16(ByteCode::Error, 0);
 
         self.visit(true_body)?;
 
         if let Some(false_body) = false_body {
             let true_jump_loc = self.func().code.len();
-            self.func().code.push(ByteCode::Error);
+            self.write_op_u16(ByteCode::Error, 0);
 
             // Relative jump
-            self.func().code[jump_loc] = ByteCode::JumpNot(self.func().code.len() as u16);
+            let len = self.func().code.len() as u16;
+            self.write_op_u16_inplace(jump_loc, ByteCode::JumpNot, len);
 
             self.visit(false_body)?;
 
-            // Relative jump
-            self.func().code[true_jump_loc] = ByteCode::Jump(self.func().code.len() as u16);
+            let len = self.func().code.len() as u16;
+            self.write_op_u16_inplace(true_jump_loc, ByteCode::Jump, len);
         } else {
-            // Relative jump
-            self.func().code[jump_loc] = ByteCode::JumpNot(self.func().code.len() as u16);
+            let len = self.func().code.len() as u16;
+            self.write_op_u16_inplace(jump_loc, ByteCode::JumpNot, len);
         }
 
         Ok(())
@@ -951,7 +971,7 @@ impl<'a> ByteCompiler<'a> {
         if variable.is_none() && expression.is_none() {
             let here = self.func().code.len() as u16;
             self.visit(body)?;
-            self.func().code.push(ByteCode::Jump(here));
+            self.write_op_u16(ByteCode::Jump, here);
         } else {
             todo!()
         }
@@ -965,12 +985,13 @@ impl<'a> ByteCompiler<'a> {
         let before_expr = self.func().code.len();
         self.visit(expression)?;
         let before_loop = self.func().code.len();
-        self.func().code.push(ByteCode::Error);
+        self.write_op_u16(ByteCode::Error, 0);
 
         self.visit(body)?;
-        self.func().code.push(ByteCode::Jump(before_expr as u16));
+        self.write_op_u16(ByteCode::Jump, before_expr as u16);
 
-        self.func().code[before_loop] = ByteCode::JumpNot(self.func().code.len() as u16);
+        let len = self.func().code.len() as u16;
+        self.write_op_u16_inplace(before_loop, ByteCode::JumpNot, len);
 
         Ok(())
     }
@@ -978,7 +999,7 @@ impl<'a> ByteCompiler<'a> {
     fn visit_loop_statement(&mut self, inner: &Box<Ast>) -> Result<(), SpruceErr> {
         let before_loop = self.func().code.len();
         self.visit(inner)?;
-        self.func().code.push(ByteCode::Jump(before_loop as u16));
+        self.write_op_u16(ByteCode::Jump, before_loop as u16);
 
         Ok(())
     }
@@ -989,7 +1010,7 @@ impl<'a> ByteCompiler<'a> {
         self.visit(expression)?;
         self.visit(index)?;
 
-        self.func().code.push(ByteCode::IndexGet);
+        self.write(ByteCode::IndexGet);
 
         Ok(())
     }
@@ -1002,7 +1023,7 @@ impl<'a> ByteCompiler<'a> {
         self.visit(index)?;
         self.visit(rhs)?;
 
-        self.func().code.push(ByteCode::IndexSet);
+        self.write(ByteCode::IndexSet);
 
         Ok(())
     }
@@ -1014,7 +1035,7 @@ impl<'a> ByteCompiler<'a> {
 
         let identifier = get_identifier_or_string(&property.token);
         let identifier = self.get_string_or_insert(identifier);
-        self.func().code.push(ByteCode::PropertyGet(identifier));
+        self.write_op_u16(ByteCode::PropertyGet, identifier);
 
         Ok(())
     }
@@ -1028,7 +1049,7 @@ impl<'a> ByteCompiler<'a> {
 
         let identifier = get_identifier_or_string(&property.token);
         let identifier = self.get_string_or_insert(identifier);
-        self.func().code.push(ByteCode::PropertySet(identifier));
+        self.write_op_u16(ByteCode::PropertySet, identifier);
 
         Ok(())
     }
@@ -1055,16 +1076,16 @@ impl<'a> ByteCompiler<'a> {
         if let Some(expr) = maybe_expr {
             self.visit(expr)?;
         } else {
-            self.func().code.push(ByteCode::None);
+            self.write(ByteCode::None);
         }
 
-        self.func().code.push(ByteCode::Yield);
+        self.write(ByteCode::Yield);
         Ok(())
     }
 
     fn visit_resume(&mut self, expr: &Box<Ast>) -> Result<(), SpruceErr> {
         self.visit(expr)?;
-        self.func().code.push(ByteCode::Resume);
+        self.write(ByteCode::Resume);
         Ok(())
     }
 
@@ -1088,10 +1109,10 @@ impl<'a> ByteCompiler<'a> {
         let value = Value::Number(type_idx as f32);
 
         if let Some(index) = self.find_constant(&value) {
-            self.func().code.push(ByteCode::ConstantByte(index as u8));
+            self.write_op_u8(ByteCode::ConstantByte, index as u8);
         } else {
             let index = self.add_constant(value);
-            self.func().code.push(ByteCode::ConstantByte(index as u8));
+            self.write_op_u8(ByteCode::ConstantByte, index as u8);
         }
 
         Ok(())
@@ -1107,11 +1128,9 @@ impl<'a> ByteCompiler<'a> {
         }
 
         if self.ctx == Context::Function(true) {
-            self.func()
-                .code
-                .extend(&[ByteCode::WrapYielded, ByteCode::Return]);
+            self.write_many(&[ByteCode::WrapYielded, ByteCode::Return]);
         } else {
-            self.func().code.push(ByteCode::Return);
+            self.write(ByteCode::Return);
         }
 
         if !matches!(self.ctx, Context::Function(_)) {
@@ -1154,16 +1173,6 @@ impl<'a> ByteCompiler<'a> {
                 }
             }
         }
-
-        // FIXME
-        // let locals = *self.symbol_table.in_depth.last().unwrap() as u8;
-        // if locals > 0 {
-        //     self.func().code.push(if locals > 1 {
-        //         ByteCode::PopN(locals)
-        //     } else {
-        //         ByteCode::Pop
-        //     });
-        // }
 
         if new_scope {
             self.symbol_table.close_scope();
@@ -1244,9 +1253,7 @@ impl<'a> ByteCompiler<'a> {
             let module = &self.vm.constants[module_idx as usize];
             self.add_item_to_current(identifier, module.clone());
         } else {
-            self.func()
-                .code
-                .push(ByteCode::ConstantByte(module_idx as u8));
+            self.write_op_u8(ByteCode::ConstantByte, module_idx as u8);
         }
 
         self.container_ctx = last_ctx;
@@ -1373,11 +1380,7 @@ impl<'a> ByteCompiler<'a> {
                 self.add_item_to_current(struct_identifier, struct_def.clone());
             }
 
-            _ => {
-                self.func()
-                    .code
-                    .push(ByteCode::ConstantByte(struct_idx as u8));
-            }
+            _ => self.write_op_u8(ByteCode::ConstantByte, struct_idx as u8),
         }
 
         self.container_ctx = last_ctx;
@@ -1398,7 +1401,7 @@ impl<'a> ByteCompiler<'a> {
             ));
         }
 
-        self.func().code.push(ByteCode::This);
+        self.write(ByteCode::This);
 
         Ok(())
     }
