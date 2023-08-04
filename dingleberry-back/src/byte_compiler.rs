@@ -328,22 +328,6 @@ impl<'a> ByteCompiler<'a> {
     ) -> Option<u16> {
         self.symbol_table.close_func();
 
-        if let Some(c) = self.current_func.as_ref().unwrap().code.last() {
-            if *c != ByteCode::Return as u8 {
-                if self.ctx == Context::Function(true) {
-                    self.write_many(&[ByteCode::None, ByteCode::WrapYielded, ByteCode::Return]);
-                } else {
-                    self.write_many(&[ByteCode::None, ByteCode::Return]);
-                }
-            }
-        } else {
-            if self.ctx == Context::Function(true) {
-                self.write_many(&[ByteCode::None, ByteCode::WrapYielded, ByteCode::Return]);
-            } else {
-                self.write_many(&[ByteCode::None, ByteCode::Return]);
-            }
-        }
-
         let func = self.current_func.take().unwrap();
         self.current_func = last_fn;
 
@@ -744,7 +728,32 @@ impl<'a> ByteCompiler<'a> {
         }
 
         match &body.data {
-            AstData::Body(statements) => self.visit_body(statements, false)?,
+            AstData::Body(statements) => {
+                self.visit_body(statements, false)?;
+
+                if statements.len() > 0 {
+                    match &statements.last().unwrap().data {
+                        &AstData::Return(_) => {}
+                        _ => {
+                            if self.ctx == Context::Function(true) {
+                                self.write_many(&[
+                                    ByteCode::None,
+                                    ByteCode::WrapYielded,
+                                    ByteCode::Return,
+                                ]);
+                            } else {
+                                self.write_many(&[ByteCode::None, ByteCode::Return]);
+                            }
+                        }
+                    }
+                } else {
+                    if self.ctx == Context::Function(true) {
+                        self.write_many(&[ByteCode::None, ByteCode::WrapYielded, ByteCode::Return]);
+                    } else {
+                        self.write_many(&[ByteCode::None, ByteCode::Return]);
+                    }
+                }
+            }
             AstData::Return(expr) => self.visit_return_statement(body, expr)?,
             _ => unreachable!(),
         }
