@@ -637,6 +637,13 @@ impl VM {
                     let class = self.pop();
                     let super_class_v = self.pop();
 
+                    if class == super_class_v {
+                        return Err(SpruceErr::new(
+                            format!("Cannot inherit '{super_class_v}' into '{class}' as they are the same definition"),
+                            SpruceErrData::VM,
+                        ));
+                    }
+
                     // This is guaranteed by the compiler
                     let Value::Object(class_o) = &class else { unreachable!() };
                     let Value::Object(super_class_o) = &super_class_v else {
