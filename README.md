@@ -1,5 +1,7 @@
 # Dingleberry
 
+[![justforfunnoreally.dev badge](https://img.shields.io/badge/justforfunnoreally-dev-9ff)](https://justforfunnoreally.dev)
+
 Dingleberry is a cringe language written in Rust. It is a dynamic, garbage collected language. It is supposed to have a similar syntax feel to Rust, to make it simpler to switch between it and Rust.
 
 Its main purpose is for testing and tweaking the garbage collector for other projects, but could still be used on its own to do small and basic tasks.
