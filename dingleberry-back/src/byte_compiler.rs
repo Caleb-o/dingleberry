@@ -222,19 +222,6 @@ impl<'a> ByteCompiler<'a> {
         ));
     }
 
-    fn get_current_struct(&self) -> &StructDef {
-        match &self.current_kind {
-            Some(kind) => {
-                if let CurrentType::StructDef(struct_def) = &kind.current {
-                    return &struct_def;
-                }
-
-                unreachable!();
-            }
-            None => unreachable!(),
-        }
-    }
-
     fn get_current_struct_mut(&mut self) -> &mut StructDef {
         match &mut self.current_kind {
             Some(ref mut kind) => {
@@ -490,9 +477,6 @@ impl<'a> ByteCompiler<'a> {
             &AstData::Program(ref statements) => self.visit_program(statements),
             &AstData::Include(ref incl) => self.visit_include(incl),
             &AstData::Empty => self.visit_empty(item),
-
-            &AstData::FieldVarDeclarations(ref decls) => self.visit_field_var_declarations(decls),
-            &AstData::FieldVarDeclaration => self.visit_field_var_declaration(item),
 
             &AstData::VarDeclarations(ref decls) => self.visit_var_declarations(decls),
             &AstData::VarDeclaration(ref decl) => self.visit_var_declaration(item, decl),
@@ -942,26 +926,6 @@ impl<'a> ByteCompiler<'a> {
         Ok(())
     }
 
-    fn visit_field_var_declaration(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
-        let field_name = get_identifier_or_string(&item.token);
-        self.add_item_to_current(field_name, Value::None);
-
-        _ = self
-            .symbol_table
-            .add_symbol(&item.token, false, false)
-            .map_err(|e| self.error(e));
-
-        Ok(())
-    }
-
-    fn visit_field_var_declarations(&mut self, decls: &Vec<Box<Ast>>) -> Result<(), SpruceErr> {
-        for item in decls {
-            self.visit_field_var_declaration(item)?;
-        }
-
-        Ok(())
-    }
-
     fn visit_var_assign(&mut self, item: &Box<Ast>, assign: &VarAssign) -> Result<(), SpruceErr> {
         let VarAssign { lhs, expression } = &assign;
         self.visit(expression)?;
@@ -1363,25 +1327,6 @@ impl<'a> ByteCompiler<'a> {
             self.visit(item)?;
 
             match &item.data {
-                AstData::FieldVarDeclarations(decls) if *is_static => {
-                    for decl in decls {
-                        let AstData::FieldVarDeclaration = decl.data else { unreachable!() };
-
-                        let file_path = Self::get_filepath(&decl.token);
-                        self.error(SpruceErr::new(
-                            format!(
-                            "Static struct '{struct_identifier}' cannot contain let bindings '{}'",
-                            decl.token.lexeme.as_ref().unwrap().get_slice()
-                        ),
-                            SpruceErrData::Compiler {
-                                file_path: file_path.clone(),
-                                line: decl.token.line,
-                                column: decl.token.column,
-                            },
-                        ));
-                    }
-                }
-
                 AstData::Function(func) if *is_static => {
                     if !func.is_static {
                         let file_path = Self::get_filepath(&item.token);
@@ -1443,17 +1388,6 @@ impl<'a> ByteCompiler<'a> {
                         format!("Struct '{struct_identifier}' already contains init field '{identifier}'"),
                         SpruceErrData::Compiler {
                             file_path: file_path.clone(),
-                            line: field.line,
-                            column: field.column,
-                        },
-                    ));
-                }
-
-                if !self.get_current_struct().items.contains_key(&identifier) {
-                    self.error(SpruceErr::new(
-                        format!("Struct '{struct_identifier}' does not contain field '{identifier}' to initialise"),
-                        SpruceErrData::Compiler {
-                            file_path,
                             line: field.line,
                             column: field.column,
                         },

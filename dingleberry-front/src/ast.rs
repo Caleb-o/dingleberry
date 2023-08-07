@@ -35,9 +35,6 @@ pub enum AstData {
     VarDeclaration(VarDeclaration),
     VarDeclarations(Vec<Box<Ast>>),
 
-    FieldVarDeclaration,
-    FieldVarDeclarations(Vec<Box<Ast>>),
-
     VarAssign(VarAssign),
     VarAssignEqual(VarAssignEqual),
 
@@ -192,20 +189,6 @@ impl Ast {
         Box::new(Self {
             token: decls[0].token.clone(),
             data: AstData::VarDeclarations(decls),
-        })
-    }
-
-    pub fn new_field_var_decl(token: Token) -> Box<Self> {
-        Box::new(Self {
-            token,
-            data: AstData::FieldVarDeclaration,
-        })
-    }
-
-    pub fn new_field_var_decls(decls: Vec<Box<Ast>>) -> Box<Self> {
-        Box::new(Self {
-            token: decls[0].token.clone(),
-            data: AstData::FieldVarDeclarations(decls),
         })
     }
 

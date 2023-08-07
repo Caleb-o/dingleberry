@@ -613,22 +613,28 @@ impl Parser {
             None
         };
 
+        if self.current.kind == TokenKind::SemiColon {
+            self.consume_here();
+
+            return Ok(Ast::new_struct_def(
+                identifier,
+                is_static,
+                init_fields,
+                Vec::new(),
+            ));
+        }
+
         self.consume(TokenKind::LCurly, "Expect '{' after struct identifier")?;
 
-        let mut statements = Vec::new();
+        let mut declarations = Vec::new();
 
         while self.current.kind != TokenKind::EndOfFile && self.current.kind != TokenKind::RCurly {
-            statements.push(match self.current.kind {
+            declarations.push(match self.current.kind {
                 TokenKind::Static => self.static_declaration()?,
 
                 TokenKind::Struct => self.struct_declaration(false)?,
                 TokenKind::Class => self.class_declaration(false)?,
                 TokenKind::Function => self.function_declaration(false)?,
-                TokenKind::Let => {
-                    let let_decl = self.field_let_declaration()?;
-                    self.consume(TokenKind::SemiColon, "Expect semicolon after struct let member")?;
-                    let_decl
-                },
 
                 n => {
                     return Err(self.error(format!(
@@ -643,7 +649,7 @@ impl Parser {
             identifier,
             is_static,
             init_fields,
-            statements,
+            declarations,
         ))
     }
 
@@ -685,12 +691,24 @@ impl Parser {
             None
         };
 
+        if self.current.kind == TokenKind::SemiColon {
+            self.consume_here();
+
+            return Ok(Ast::new_class_def(
+                identifier,
+                is_static,
+                init_fields,
+                super_class,
+                Vec::new(),
+            ));
+        }
+
         self.consume(TokenKind::LCurly, "Expect '{' after class identifier")?;
 
-        let mut statements = Vec::new();
+        let mut declarations = Vec::new();
 
         while self.current.kind != TokenKind::EndOfFile && self.current.kind != TokenKind::RCurly {
-            statements.push(match self.current.kind {
+            declarations.push(match self.current.kind {
                 TokenKind::Static => self.static_declaration()?,
 
                 TokenKind::Struct => self.struct_declaration(false)?,
@@ -711,7 +729,7 @@ impl Parser {
             is_static,
             init_fields,
             super_class,
-            statements,
+            declarations,
         ))
     }
 
@@ -1097,29 +1115,6 @@ impl Parser {
         }
 
         Ok(Ast::new_var_decl(identifier, is_mutable, expr))
-    }
-
-    fn collect_field_let_decl(&mut self) -> Result<Box<Ast>, SpruceErr> {
-        let identifier = self.get_current();
-        self.consume_any(
-            &[TokenKind::Identifier, TokenKind::String],
-            "Expected identifier or string after 'let'",
-        )?;
-
-        Ok(Ast::new_field_var_decl(identifier))
-    }
-
-    fn field_let_declaration(&mut self) -> Result<Box<Ast>, SpruceErr> {
-        self.consume_here();
-
-        let mut decls = vec![self.collect_field_let_decl()?];
-
-        while self.current.kind == TokenKind::Comma {
-            self.consume_here();
-            decls.push(self.collect_field_let_decl()?);
-        }
-
-        Ok(Ast::new_field_var_decls(decls))
     }
 
     fn let_declaration(&mut self) -> Result<Box<Ast>, SpruceErr> {
