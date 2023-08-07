@@ -419,8 +419,8 @@ impl VM {
     }
 
     fn dump_stack_trace(&self) {
-        for (idx, frame) in self.call_stack.iter().rev().enumerate() {
-            print!("[{}] ", self.call_stack.len() - 1 - idx);
+        for frame in self.call_stack.iter().rev() {
+            print!("at ");
             match &*frame.function.data.borrow() {
                 ObjectData::Function(func, _) => {
                     if let Some(receiver) = &func.receiver {

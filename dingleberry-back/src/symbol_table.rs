@@ -72,12 +72,44 @@ impl SymbolTable {
     }
 
     pub fn find_local_symbol(&self, identifier: &str) -> Option<&Symbol> {
+        let in_depth = *self.in_depth.last().unwrap();
         for (idx, sym) in self.scope.iter().rev().enumerate() {
-            if idx as u16 >= *self.in_depth.last().unwrap() {
+            if idx as u16 >= in_depth {
                 break;
             }
             if identifier == sym.identifier {
                 return Some(sym);
+            }
+        }
+
+        None
+    }
+
+    pub fn find_local_or_inner_symbol(&self, identifier: &Token) -> Option<(&Symbol, bool)> {
+        let identifier = identifier.lexeme.as_ref().unwrap().get_slice();
+
+        let in_depth = *self.in_depth.last().unwrap();
+        for (idx, sym) in self.scope.iter().rev().enumerate() {
+            if idx as u16 >= in_depth {
+                break;
+            }
+            if identifier == sym.identifier {
+                return Some((sym, false));
+            }
+        }
+
+        // TODO: Cleanup
+        if self.in_depth.len() > 1 {
+            let current_scope_c = *self.in_depth.last().unwrap() as usize;
+            let in_depth_2last = *self.in_depth.iter().rev().nth(1).unwrap();
+
+            for (idx, sym) in self.scope.iter().rev().skip(current_scope_c).enumerate() {
+                if idx as u16 >= in_depth_2last {
+                    break;
+                }
+                if identifier == sym.identifier {
+                    return Some((sym, true));
+                }
             }
         }
 

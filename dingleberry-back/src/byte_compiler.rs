@@ -451,12 +451,7 @@ impl<'a> ByteCompiler<'a> {
             .inject_symbol(identifier.to_string(), is_mutable);
     }
 
-    fn add_symbol(
-        &mut self,
-        token: &Token,
-        is_mutable: bool,
-        allow_override: bool,
-    ) -> Result<(), SpruceErr> {
+    fn add_symbol(&mut self, token: &Token, is_mutable: bool, allow_override: bool) {
         if self.symbol_table.is_global() {
             let slice = token.lexeme.as_ref().unwrap().get_slice();
             let index = if let Some(index) = self.find_str_constant(slice) {
@@ -477,8 +472,6 @@ impl<'a> ByteCompiler<'a> {
                 .add_symbol(token, is_mutable, allow_override)
                 .map_err(|e| self.error(e));
         }
-
-        Ok(())
     }
 
     fn visit(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
@@ -531,6 +524,25 @@ impl<'a> ByteCompiler<'a> {
     }
 
     fn visit_identifier(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
+        if self.container_ctx != ContainerContext::None {
+            let stuff = if let Some((sym, is_inner)) =
+                self.symbol_table.find_local_or_inner_symbol(&item.token)
+            {
+                Some((sym.identifier.clone(), is_inner))
+            } else {
+                None
+            };
+
+            if let Some((identifier, is_inner)) = stuff {
+                if is_inner {
+                    let index = self.get_string_or_insert(identifier);
+                    self.write(ByteCode::This);
+                    self.write_op_u16(ByteCode::PropertyGet, index);
+                    return Ok(());
+                }
+            }
+        }
+
         let maybe_values = self.symbol_table.find_symbol_any(&item.token)?;
 
         match maybe_values {
@@ -710,9 +722,7 @@ impl<'a> ByteCompiler<'a> {
     ) -> Result<bool, SpruceErr> {
         let AstData::Parameter(is_variadic) = &item.data else { unreachable!() };
 
-        _ = self
-            .add_symbol(&item.token, false, false)
-            .map_err(|e| self.error(e));
+        self.add_symbol(&item.token, false, false);
 
         if *is_variadic && position != parameters.len() - 1 {
             let file_path = Self::get_filepath(&item.token);
@@ -760,9 +770,7 @@ impl<'a> ByteCompiler<'a> {
         };
 
         if !anonymous {
-            _ = self
-                .add_symbol(&item.token, false, false)
-                .map_err(|e| self.error(e));
+            self.add_symbol(&item.token, false, false);
         }
 
         self.open_function(
@@ -1254,9 +1262,7 @@ impl<'a> ByteCompiler<'a> {
             self.visit(&incl.root)?;
 
             _ = self.close_module();
-            _ = self
-                .add_symbol(&module_name, false, false)
-                .map_err(|e| self.error(e));
+            self.add_symbol(&module_name, false, false);
 
             self.container_ctx = last_container;
             self.current_kind = last_item;
@@ -1307,9 +1313,7 @@ impl<'a> ByteCompiler<'a> {
         }
 
         let module_idx = self.close_module();
-        _ = self
-            .add_symbol(&item.token, false, false)
-            .map_err(|e| self.error(e));
+        self.add_symbol(&item.token, false, false);
 
         if self.current_kind.is_some() {
             let module = &self.vm.constants[module_idx as usize];
@@ -1338,6 +1342,33 @@ impl<'a> ByteCompiler<'a> {
 
         let struct_identifier = item.token.lexeme.as_ref().unwrap().get_slice().to_string();
         self.open_struct(*is_static, struct_identifier.clone());
+
+        if let Some(init_fields) = init_fields {
+            let mut current_field_names = HashSet::new();
+            let mut current_fields = Vec::new();
+
+            for field in init_fields {
+                let identifier = get_identifier_or_string(field);
+                let file_path = Self::get_filepath(&field);
+
+                current_fields.push(identifier.clone());
+                _ = self.add_symbol(field, false, false);
+
+                if !current_field_names.insert(identifier.clone()) {
+                    self.error(SpruceErr::new(
+                        format!("Struct '{struct_identifier}' already contains init field '{identifier}'"),
+                        SpruceErrData::Compiler {
+                            file_path: file_path.clone(),
+                            line: field.line,
+                            column: field.column,
+                        },
+                    ));
+                }
+            }
+
+            self.get_current_struct_mut().init_items =
+                Some(current_fields.into_iter().map(|s| s.to_string()).collect());
+        }
 
         for item in declarations {
             self.visit(item)?;
@@ -1389,36 +1420,8 @@ impl<'a> ByteCompiler<'a> {
             }
         }
 
-        if let Some(init_fields) = init_fields {
-            let mut current_field_names = HashSet::new();
-            let mut current_fields = Vec::new();
-
-            for field in init_fields {
-                let identifier = get_identifier_or_string(field);
-                let file_path = Self::get_filepath(&field);
-
-                current_fields.push(identifier.clone());
-
-                if !current_field_names.insert(identifier.clone()) {
-                    self.error(SpruceErr::new(
-                        format!("Struct '{struct_identifier}' already contains init field '{identifier}'"),
-                        SpruceErrData::Compiler {
-                            file_path: file_path.clone(),
-                            line: field.line,
-                            column: field.column,
-                        },
-                    ));
-                }
-            }
-
-            self.get_current_struct_mut().init_items =
-                Some(current_fields.into_iter().map(|s| s.to_string()).collect());
-        }
-
         let struct_idx = self.close_struct();
-        _ = self
-            .add_symbol(&item.token, false, false)
-            .map_err(|e| self.error(e));
+        self.add_symbol(&item.token, false, false);
 
         match last_ctx {
             ContainerContext::Module | ContainerContext::Struct | ContainerContext::Class => {
@@ -1450,6 +1453,35 @@ impl<'a> ByteCompiler<'a> {
 
         let class_identifier = item.token.lexeme.as_ref().unwrap().get_slice().to_string();
         self.open_class(*is_static, class_identifier.clone());
+
+        if let Some(init_fields) = init_fields {
+            let mut current_field_names = HashSet::new();
+            let mut current_fields = Vec::new();
+
+            for field in init_fields {
+                let identifier = get_identifier_or_string(field);
+                let file_path = Self::get_filepath(&field);
+
+                current_fields.push(identifier.clone());
+                _ = self.add_symbol(field, false, false);
+
+                if !current_field_names.insert(identifier.clone()) {
+                    self.error(SpruceErr::new(
+                        format!(
+                            "Class '{class_identifier}' already contains init field '{identifier}'"
+                        ),
+                        SpruceErrData::Compiler {
+                            file_path: file_path.clone(),
+                            line: field.line,
+                            column: field.column,
+                        },
+                    ));
+                }
+            }
+
+            self.get_current_class_mut().init_items =
+                Some(current_fields.into_iter().map(|s| s.to_string()).collect());
+        }
 
         for item in declarations {
             self.visit(item)?;
@@ -1501,38 +1533,8 @@ impl<'a> ByteCompiler<'a> {
             }
         }
 
-        if let Some(init_fields) = init_fields {
-            let mut current_field_names = HashSet::new();
-            let mut current_fields = Vec::new();
-
-            for field in init_fields {
-                let identifier = get_identifier_or_string(field);
-                let file_path = Self::get_filepath(&field);
-
-                current_fields.push(identifier.clone());
-
-                if !current_field_names.insert(identifier.clone()) {
-                    self.error(SpruceErr::new(
-                        format!(
-                            "Class '{class_identifier}' already contains init field '{identifier}'"
-                        ),
-                        SpruceErrData::Compiler {
-                            file_path: file_path.clone(),
-                            line: field.line,
-                            column: field.column,
-                        },
-                    ));
-                }
-            }
-
-            self.get_current_class_mut().init_items =
-                Some(current_fields.into_iter().map(|s| s.to_string()).collect());
-        }
-
         let class_idx = self.close_class(super_class)?;
-        _ = self
-            .add_symbol(&item.token, false, false)
-            .map_err(|e| self.error(e));
+        self.add_symbol(&item.token, false, false);
 
         match last_ctx {
             ContainerContext::Module | ContainerContext::Struct | ContainerContext::Class => {

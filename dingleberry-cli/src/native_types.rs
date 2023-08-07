@@ -62,7 +62,9 @@ pub fn register_native_objects(vm: &mut VM, native_flags: NativeModuleFlags) {
 
     if native_flags.list {
         vm.build_module("List", false, |vm, module| {
+            module.add_func(vm, "with_capacity", Some(1), &list_with_capacity);
             module.add_func(vm, "append", Some(2), &list_append);
+            module.add_func(vm, "extend", Some(2), &list_extend);
             module.add_func(vm, "prepend", Some(2), &list_prepend);
         })
         .unwrap();
@@ -190,11 +192,41 @@ fn strings_clone_no_intern(vm: &mut VM, args: Vec<Value>) -> Value {
    === LIST
 */
 
+fn list_with_capacity(vm: &mut VM, args: Vec<Value>) -> Value {
+    if let Some(n) = args[0].get_as_number() {
+        let count = n as usize;
+        let obj = vm.allocate(ObjectData::List(Vec::with_capacity(count)));
+        return Value::Object(obj);
+    }
+    Value::None
+}
+
 fn list_append(_: &mut VM, mut args: Vec<Value>) -> Value {
     if let Some(obj) = args[0].get_as_object() {
         if let ObjectData::List(l) = &mut *obj.upgrade().unwrap().data.borrow_mut() {
             l.push(args.pop().unwrap());
         }
+    }
+    Value::None
+}
+
+fn list_extend(_: &mut VM, args: Vec<Value>) -> Value {
+    match (args[0].get_as_object(), args[1].get_as_object()) {
+        (Some(ref lobj), Some(ref robj)) => {
+            let lobj = lobj.upgrade().unwrap();
+            let robj = robj.upgrade().unwrap();
+
+            if lobj == robj {
+                return Value::None;
+            }
+
+            if let (ObjectData::List(llist), ObjectData::List(rlist)) =
+                (&mut *lobj.data.borrow_mut(), &*robj.data.borrow())
+            {
+                llist.extend_from_slice(&rlist);
+            };
+        }
+        _ => {}
     }
     Value::None
 }
