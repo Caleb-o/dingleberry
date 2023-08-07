@@ -57,6 +57,7 @@ impl Generation {
 pub struct GarbageStats {
     allocs: usize,
     frees: usize,
+    runtime_allocs: usize,
     frees_this_sweep: usize,
     moves_this_sweep: usize,
     collections: usize,
@@ -68,6 +69,7 @@ impl GarbageStats {
         GarbageStats {
             allocs: 0,
             frees: 0,
+            runtime_allocs: 0,
             frees_this_sweep: 0,
             moves_this_sweep: 0,
             collections: 0,
@@ -80,8 +82,8 @@ impl Display for GarbageStats {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "[Allocs {} | Frees {} | Collections {} | Bytes Allocated {}]",
-            self.allocs, self.frees, self.collections, self.bytes_allocated
+            "[Allocs {} | Runtime Allocs {} | Total Allocs {} | Frees {} |  Collections {} | Bytes Allocated {}]",
+            self.allocs, self.runtime_allocs, self.frees, self.allocs + self.runtime_allocs,  self.collections, self.bytes_allocated
         )
     }
 }
@@ -156,7 +158,12 @@ impl GarbageCollector {
 
         self.bytes_allocated += to_alloc_bytes;
 
-        self.stats.allocs += 1;
+        if self.runtime {
+            self.stats.runtime_allocs += 1;
+        } else {
+            self.stats.allocs += 1;
+        }
+
         self.stats.bytes_allocated += to_alloc_bytes;
 
         // Check for next collection
