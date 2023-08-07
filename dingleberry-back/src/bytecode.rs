@@ -37,6 +37,8 @@ pub enum ByteCode {
     IndexSet,
 
     This,
+    Super,
+
     PropertyGet, // index - u16
     PropertySet, // index - u16
 
@@ -97,23 +99,25 @@ impl From<u8> for ByteCode {
             25 => IndexSet,
 
             26 => This,
-            27 => PropertyGet,
-            28 => PropertySet,
+            27 => Super,
 
-            29 => Jump,
-            30 => JumpNot,
+            28 => PropertyGet,
+            29 => PropertySet,
 
-            31 => Call,
-            32 => Return,
+            30 => Jump,
+            31 => JumpNot,
 
-            33 => None,
-            34 => IntoList,
-            35 => IntoTuple,
+            32 => Call,
+            33 => Return,
 
-            36 => Inherit,
+            34 => None,
+            35 => IntoList,
+            36 => IntoTuple,
 
-            37 => CheckIterObj,
-            38 => MakeIterObj,
+            37 => Inherit,
+
+            38 => CheckIterObj,
+            39 => MakeIterObj,
 
             _ => unreachable!(),
         }

@@ -322,14 +322,8 @@ impl VM {
                 let mut values = HashMap::with_capacity(struct_def.items.len());
 
                 for (id, val) in &struct_def.items {
-                    if let Value::Object(obj) = val {
-                        if let ObjectData::Function(func, _) =
-                            &*obj.upgrade().unwrap().data.borrow()
-                        {
-                            if func.is_static {
-                                continue;
-                            }
-                        }
+                    if VM::is_static_value(val) {
+                        continue;
                     }
 
                     values.insert(id.clone(), val.clone());
@@ -342,7 +336,7 @@ impl VM {
                 }
 
                 let struct_ = self.allocate(ObjectData::StructInstance(Rc::new(StructInstance {
-                    struct_name: struct_def.identifier.clone(),
+                    def: struct_def.clone(),
                     values,
                 })));
 
@@ -361,14 +355,8 @@ impl VM {
                 let mut values = HashMap::with_capacity(class_def.items.len());
 
                 for (id, val) in &class_def.items {
-                    if let Value::Object(obj) = val {
-                        if let ObjectData::Function(func, _) =
-                            &*obj.upgrade().unwrap().data.borrow()
-                        {
-                            if func.is_static {
-                                continue;
-                            }
-                        }
+                    if VM::is_static_value(val) {
+                        continue;
                     }
 
                     values.insert(id.clone(), val.clone());
@@ -381,7 +369,7 @@ impl VM {
                 }
 
                 let class = self.allocate(ObjectData::ClassInstance(Rc::new(ClassInstance {
-                    class_name: class_def.identifier.clone(),
+                    def: class_def.clone(),
                     values,
                 })));
 
@@ -664,10 +652,23 @@ impl VM {
                             ObjectData::ClassDef(ref mut class),
                             ObjectData::ClassDef(ref super_class),
                         ) => {
+                            if class.is_static != super_class.is_static {
+                                return Err(SpruceErr::new(
+                                    format!("Class '{class}' and '{super_class}' must both be static or non-static"),
+                                    SpruceErrData::VM,
+                                ));
+                            }
+
                             let class_mut = Rc::get_mut(class).unwrap();
                             class_mut.super_class = Some(super_class_v.clone());
                             for (k, v) in &super_class.items {
-                                class_mut.items.insert(k.clone(), v.clone());
+                                if VM::is_static_value(v) {
+                                    continue;
+                                }
+
+                                if !class_mut.items.contains_key(k) {
+                                    class_mut.items.insert(k.clone(), v.clone());
+                                }
                             }
                         }
                         _ => {
@@ -738,22 +739,13 @@ impl VM {
                 }
 
                 ByteCode::This => {
-                    let function = self.get_function();
-                    if function.receiver.is_none() {
-                        return Err(SpruceErr::new(
-                            format!(
-                                "Function '{}' does not have a receiver to use 'this'",
-                                function.identifier.as_ref().unwrap_or(&"Anon".to_string())
-                            ),
-                            SpruceErrData::VM,
-                        ));
-                    }
+                    let this = self.read_this()?;
+                    self.push(this);
+                }
 
-                    let start = self.func_stack_start();
-                    let args = self.call_stack.last().unwrap().arg_count as usize;
-                    let pos = start + args - 1;
-
-                    self.push(self.stack[pos].clone());
+                ByteCode::Super => {
+                    let super_class = self.read_super()?;
+                    self.push(super_class);
                 }
 
                 ByteCode::None => self.stack.push(Value::None),
@@ -825,6 +817,46 @@ impl VM {
         let ObjectData::Str(str) = &*obj.data.borrow() else { unreachable!() };
 
         str.clone()
+    }
+
+    fn read_this(&mut self) -> Result<Value, SpruceErr> {
+        let function = self.get_function();
+        if function.receiver.is_none() {
+            return Err(SpruceErr::new(
+                format!(
+                    "Function '{}' does not have a receiver to use 'this'",
+                    function.identifier.as_ref().unwrap_or(&"Anon".to_string())
+                ),
+                SpruceErrData::VM,
+            ));
+        }
+
+        let start = self.func_stack_start();
+        let args = self.call_stack.last().unwrap().arg_count as usize;
+        let pos = start + args - 1;
+
+        Ok(self.stack[pos].clone())
+    }
+
+    fn read_super(&mut self) -> Result<Value, SpruceErr> {
+        let function = self.get_function();
+        let this = self.read_this()?;
+
+        if let Value::Object(obj) = &this {
+            if let ObjectData::ClassInstance(inst) = &*obj.upgrade().unwrap().data.borrow() {
+                if let Some(super_class) = &inst.def.super_class {
+                    return Ok(super_class.clone());
+                }
+            }
+        }
+
+        Err(SpruceErr::new(
+            format!(
+                "Function '{}' does not have a receiver to use 'super'",
+                function.identifier.as_ref().unwrap_or(&"Anon".to_string())
+            ),
+            SpruceErrData::VM,
+        ))
     }
 
     fn cleanup_strings(&mut self) {
@@ -1206,7 +1238,7 @@ impl VM {
                         return Err(SpruceErr::new(
                             format!(
                                 "Unknown field '{property}' on struct '{}'",
-                                struct_.struct_name
+                                struct_.def.identifier
                             ),
                             SpruceErrData::VM,
                         ));
@@ -1222,7 +1254,7 @@ impl VM {
                         return Err(SpruceErr::new(
                             format!(
                                 "Unknown field '{property}' on struct '{}'",
-                                class.class_name
+                                class.def.identifier
                             ),
                             SpruceErrData::VM,
                         ));
@@ -1366,5 +1398,17 @@ impl VM {
 
         let b = self.get_next_inst_byte();
         b.into()
+    }
+
+    fn is_static_value(value: &Value) -> bool {
+        match value {
+            Value::Object(obj) => match &*obj.upgrade().unwrap().data.borrow() {
+                ObjectData::Function(func, _) => func.is_static,
+                ObjectData::ClassDef(c) => c.is_static,
+                ObjectData::StructDef(s) => s.is_static,
+                _ => false,
+            },
+            _ => false,
+        }
     }
 }

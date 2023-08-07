@@ -56,6 +56,7 @@ pub enum AstData {
     SwitchCase(SwitchCase),
 
     This,
+    Super,
 
     Yield(Option<Box<Ast>>),
     Resume(Box<Ast>),
@@ -269,6 +270,13 @@ impl Ast {
         Box::new(Self {
             token,
             data: AstData::This,
+        })
+    }
+
+    pub fn new_super(token: Token) -> Box<Self> {
+        Box::new(Self {
+            token,
+            data: AstData::Super,
         })
     }
 

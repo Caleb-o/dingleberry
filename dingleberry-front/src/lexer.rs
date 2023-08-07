@@ -196,6 +196,7 @@ impl Lexer {
                     ("truct", TokenKind::Struct),
                     ("witch", TokenKind::Switch),
                     ("tatic", TokenKind::Static),
+                    ("uper", TokenKind::Super),
                 ],
             ),
             'l' => self.check_if_matches(

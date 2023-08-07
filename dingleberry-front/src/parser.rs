@@ -185,6 +185,12 @@ impl Parser {
                 Ok(Ast::new_this(token))
             }
 
+            TokenKind::Super => {
+                let token = self.get_current();
+                self.consume_here();
+                Ok(Ast::new_super(token))
+            }
+
             TokenKind::At => self.type_of_expr(),
 
             TokenKind::LParen => {

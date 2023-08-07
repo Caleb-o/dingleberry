@@ -40,7 +40,7 @@
       "patterns": [
         {
           "name": "keyword.control.dingleberry",
-          "match": "\\b(include|static|yield|resume|yields|if|else|loop|while|for|in|fn|return|let|mut|module|struct|class|this|true|false|none)\\b"
+          "match": "\\b(include|static|yield|resume|yields|if|else|loop|while|for|in|fn|return|let|mut|module|struct|class|this|super|true|false|none)\\b"
         }
       ]
     },

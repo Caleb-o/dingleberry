@@ -523,6 +523,7 @@ impl<'a> ByteCompiler<'a> {
             &AstData::Body(ref statements) => self.visit_body(statements, true),
             &AstData::IfStatement(ref statement) => self.visit_if_statement(statement),
             &AstData::This => self.visit_this(item),
+            &AstData::Super => self.visit_super(item),
             &AstData::Return(ref expr) => self.visit_return_statement(item, expr),
             &AstData::Module(ref items) => self.visit_module(item, items),
             &AstData::StructDef(ref struct_def) => self.visit_struct_def(item, struct_def),
@@ -1601,7 +1602,7 @@ impl<'a> ByteCompiler<'a> {
             let file_path = Self::get_filepath(&item.token);
 
             self.error(SpruceErr::new(
-                "Cannot use 'this' outside of modules".into(),
+                "Cannot use 'this' outside of structs, classes or modules".into(),
                 SpruceErrData::Compiler {
                     file_path,
                     line: item.token.line,
@@ -1611,6 +1612,25 @@ impl<'a> ByteCompiler<'a> {
         }
 
         self.write(ByteCode::This);
+
+        Ok(())
+    }
+
+    fn visit_super(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
+        if self.container_ctx != ContainerContext::Class {
+            let file_path = Self::get_filepath(&item.token);
+
+            self.error(SpruceErr::new(
+                "Cannot use 'super' outside of classes".into(),
+                SpruceErrData::Compiler {
+                    file_path,
+                    line: item.token.line,
+                    column: item.token.column,
+                },
+            ));
+        }
+
+        self.write(ByteCode::Super);
 
         Ok(())
     }

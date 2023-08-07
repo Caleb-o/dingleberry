@@ -68,6 +68,12 @@ pub struct ClassDef {
     pub items: HashMap<String, Value>,
 }
 
+impl Display for ClassDef {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "class_def<{}>", self.identifier)
+    }
+}
+
 impl StructDef {
     #[inline]
     pub fn add_item(&mut self, identifier: String, value: Value) {
@@ -118,19 +124,25 @@ impl PartialOrd for ClassDef {
 
 #[derive(Clone, PartialEq)]
 pub struct StructInstance {
-    pub struct_name: String,
+    pub def: Rc<StructDef>,
     pub values: HashMap<String, Value>,
 }
 
 #[derive(Clone, PartialEq)]
 pub struct ClassInstance {
-    pub class_name: String,
+    pub def: Rc<ClassDef>,
     pub values: HashMap<String, Value>,
 }
 
 impl PartialOrd for StructInstance {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.struct_name.partial_cmp(&other.struct_name)
+        self.def.partial_cmp(&other.def)
+    }
+}
+
+impl PartialOrd for ClassInstance {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.def.partial_cmp(&other.def)
     }
 }
 
@@ -248,8 +260,8 @@ impl Display for ObjectData {
             Self::StructDef(s) => write!(f, "struct_def<{}>", s.identifier),
             Self::ClassDef(s) => write!(f, "class_def<{}>", s.identifier),
 
-            Self::StructInstance(s) => write!(f, "struct_inst<{}>", s.struct_name),
-            Self::ClassInstance(s) => write!(f, "class_inst<{}>", s.class_name),
+            Self::StructInstance(s) => write!(f, "struct_inst<{}>", s.def.identifier),
+            Self::ClassInstance(s) => write!(f, "class_inst<{}>", s.def.identifier),
 
             Self::NativeObject(o) => write!(f, "native_object<{o:?}>"),
 
