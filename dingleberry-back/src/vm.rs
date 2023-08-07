@@ -205,7 +205,7 @@ impl VM {
         self.register_functions();
         self.register_value_methods();
 
-        // println!("Code: {:?}", self.get_function().code);
+        self.gc.start();
 
         if let Err(e) = self.run() {
             println!("{e}");
@@ -213,6 +213,10 @@ impl VM {
         }
 
         self.cleanup();
+
+        if cfg!(debug_assertions) {
+            self.gc.write_stats();
+        }
     }
 
     pub fn call(&mut self, maybe_function: Value, arg_count: usize) -> Result<(), SpruceErr> {

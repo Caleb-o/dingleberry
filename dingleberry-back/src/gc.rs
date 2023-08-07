@@ -37,6 +37,7 @@ impl Generation {
             let is_marked = obj.marked.get();
 
             if !is_marked {
+                stats.frees_this_sweep += 1;
                 stats.frees += 1;
             }
 
@@ -48,11 +49,6 @@ impl Generation {
     }
 
     pub fn transfer(&mut self, from: &mut Self) {
-        if cfg!(Debug) {
-            for item in &from.objects {
-                println!("Moving to next generation {:?}", item.data);
-            }
-        }
         self.objects.append(&mut from.objects);
         from.objects.clear();
     }
@@ -61,6 +57,8 @@ impl Generation {
 pub struct GarbageStats {
     allocs: usize,
     frees: usize,
+    frees_this_sweep: usize,
+    moves_this_sweep: usize,
     collections: usize,
     bytes_allocated: usize,
 }
@@ -70,6 +68,8 @@ impl GarbageStats {
         GarbageStats {
             allocs: 0,
             frees: 0,
+            frees_this_sweep: 0,
+            moves_this_sweep: 0,
             collections: 0,
             bytes_allocated: 0,
         }
@@ -94,6 +94,7 @@ pub struct GarbageCollector {
     next_sweep: usize,
     generation_counter: u8,
 
+    runtime: bool,
     stats: GarbageStats,
 }
 
@@ -117,8 +118,15 @@ impl GarbageCollector {
             next_sweep: INITIAL_COLLECTION_SIZE,
             generation_counter: 0,
 
+            runtime: false,
             stats: GarbageStats::new(),
         }
+    }
+
+    #[inline]
+    pub fn start(&mut self) {
+        // This makes sure we don't try to collect garbage during compilation
+        self.runtime = true;
     }
 
     #[inline]
@@ -151,15 +159,8 @@ impl GarbageCollector {
         self.stats.allocs += 1;
         self.stats.bytes_allocated += to_alloc_bytes;
 
-        if cfg!(Debug) {
-            println!(
-                "Allocating {to_alloc_bytes} bytes, total allocated {}",
-                self.bytes_allocated
-            );
-        }
-
         // Check for next collection
-        if self.bytes_allocated >= self.next_sweep {
+        if self.runtime && self.bytes_allocated >= self.next_sweep {
             self.collect_garbage(Some(roots), true);
         }
 
@@ -265,6 +266,9 @@ impl GarbageCollector {
     }
 
     fn sweep(&mut self, bump_next: bool) {
+        self.stats.frees_this_sweep = 0;
+        self.stats.moves_this_sweep = 0;
+
         self.young.sweep(&mut self.stats);
 
         self.generation_counter += 1;
@@ -274,6 +278,7 @@ impl GarbageCollector {
         }
 
         // Append young to old
+        self.stats.moves_this_sweep = self.young.objects.len();
         self.old.transfer(&mut self.young);
 
         // Set next sweep point
@@ -321,8 +326,8 @@ impl GarbageCollector {
     }
 
     pub fn collect_all_garbage<'a>(&mut self, roots: Option<Roots<'a>>) {
-        if cfg!(Debug) {
-            println!("Collecting al garbage");
+        if cfg!(debug_assertions) {
+            println!("[GC] Collecting all garbage");
         }
         self.stats.collections += 1;
 
@@ -341,8 +346,8 @@ impl GarbageCollector {
 
     /// Returns if it swept old generation
     pub fn collect_garbage<'a>(&mut self, roots: Option<Roots<'a>>, bump_next: bool) {
-        if cfg!(Debug) {
-            println!("Collecting garbage");
+        if cfg!(debug_assertions) {
+            println!("[GC] Collecting garbage");
         }
         self.stats.collections += 1;
 
@@ -351,6 +356,13 @@ impl GarbageCollector {
         }
 
         self.sweep(bump_next);
+
+        if cfg!(debug_assertions) {
+            println!(
+                "[GC] Items freed this sweep: {} | Moves to old generation: {}",
+                self.stats.frees_this_sweep, self.stats.moves_this_sweep,
+            );
+        }
     }
 }
 
