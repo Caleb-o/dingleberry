@@ -1,0 +1,37 @@
+class Generator(items, co, is_done) {
+    static fn new(items) {
+        let mut g = Generator(items, none, false);
+        // We need the instanced version of the method
+        g.co = g.gen();
+        g
+    }
+
+    fn run {
+        if Coroutine.is_complete(this.co) {
+            return none;
+        }
+
+        let value = Coroutine.get(this.co);
+        this.co = resume this.co;
+        value
+    }
+
+    fn gen yields {
+        let mut idx = 0;
+        let length = len(this.items);
+
+        while idx < length {
+            yield this.items[idx];
+            idx = idx + 1;
+        }
+
+        this.is_done = true;
+    }
+}
+
+{
+    let g = Generator.new([1, 2, 3]);
+    while !g.is_done {
+        println(g.run());
+    }
+}
