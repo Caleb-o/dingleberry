@@ -8,7 +8,7 @@ use std::rc::{Rc, Weak};
 
 use crate::byte_compiler::Function;
 use crate::nativefunction::NativeFunction;
-use crate::object::{Object, ObjectData};
+use crate::object::{Coroutine, Object, ObjectData};
 use crate::value::Value;
 
 /// Total initial bytes before a collection occurs
@@ -135,8 +135,14 @@ impl GarbageCollector {
             ObjectData::Function(_, _) => std::mem::size_of::<Function>(),
             ObjectData::NativeFunction(_) => std::mem::size_of::<NativeFunction>(),
             ObjectData::Module(m) => std::mem::size_of::<Value>() * m.items.len(),
-            ObjectData::StructDef(s) => std::mem::size_of::<Value>() * s.items.len(),
-            ObjectData::StructInstance(s) => std::mem::size_of::<Value>() * s.values.len(),
+            ObjectData::StructDef(d) => std::mem::size_of::<Value>() * d.items.len(),
+            ObjectData::StructInstance(i) => std::mem::size_of::<Value>() * i.values.len(),
+            ObjectData::ClassDef(d) => std::mem::size_of::<Value>() * d.items.len(),
+            ObjectData::ClassInstance(i) => std::mem::size_of::<Value>() * i.values.len(),
+            ObjectData::Coroutine(c) => {
+                std::mem::size_of::<Coroutine>()
+                    + std::mem::size_of::<Value>() * c.stack_items.len()
+            }
             _ => 0,
         } + std::mem::size_of::<ObjectData>();
 
@@ -164,6 +170,12 @@ impl GarbageCollector {
         let weak = Rc::downgrade(&obj);
         self.young.objects.push(obj);
         weak
+    }
+
+    fn mark_value(&self, value: &Value) {
+        if let Value::Object(obj) = value {
+            self.mark(&obj.upgrade().unwrap());
+        }
     }
 
     fn mark(&self, root: &Rc<Object>) {
@@ -196,6 +208,55 @@ impl GarbageCollector {
                         self.mark(&obj.upgrade().unwrap());
                     }
                 }
+                root.marked.set(true);
+            }
+
+            &ObjectData::StructDef(ref d) => {
+                for item in d.items.values() {
+                    if let Value::Object(ref obj) = &*item {
+                        self.mark(&obj.upgrade().unwrap());
+                    }
+                }
+                root.marked.set(true);
+            }
+
+            &ObjectData::ClassDef(ref d) => {
+                for item in d.items.values() {
+                    if let Value::Object(ref obj) = &*item {
+                        self.mark(&obj.upgrade().unwrap());
+                    }
+                }
+                root.marked.set(true);
+            }
+
+            &ObjectData::StructInstance(ref i) => {
+                for item in i.values.values() {
+                    if let Value::Object(ref obj) = &*item {
+                        self.mark(&obj.upgrade().unwrap());
+                    }
+                }
+                root.marked.set(true);
+            }
+
+            &ObjectData::ClassInstance(ref i) => {
+                if let Some(super_class) = &i.def.super_class {
+                    self.mark_value(super_class);
+                }
+
+                for item in i.values.values() {
+                    if let Value::Object(ref obj) = &*item {
+                        self.mark(&obj.upgrade().unwrap());
+                    }
+                }
+                root.marked.set(true);
+            }
+
+            ObjectData::Coroutine(c) => {
+                for item in c.stack_items.iter() {
+                    self.mark_value(item);
+                }
+
+                self.mark(&c.call_frame.function);
                 root.marked.set(true);
             }
 
