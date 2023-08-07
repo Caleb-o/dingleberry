@@ -1,14 +1,6 @@
-struct Tester(tests) {
-    let tests;
-    let succeeded, failed, total;
-
+struct Tester(tests, succeeded, failed, total) {
     static fn new(tests) {
-        let mut t = this(tests);
-        t.succeeded = 0;
-        t.failed = 0;
-        t.total = len(tests);
-
-        t
+        this(tests, 0, 0, len(tests))
     }
 
     fn run {
