@@ -29,6 +29,7 @@ pub fn print_function_code(vm: &VM, function: &Rc<Function>) {
             }
 
             Pop => simple_instruction(&mut idx, "POP"),
+            PopN => byte_instruction(&mut idx, "POP_N", &function.code),
 
             Add => simple_instruction(&mut idx, "ADD"),
             Sub => simple_instruction(&mut idx, "SUB"),

@@ -84,6 +84,19 @@ impl SymbolTable {
         None
     }
 
+    pub fn get_in_depth(&self) -> usize {
+        let mut count = 0;
+
+        for sym in self.scope.iter().rev() {
+            if sym.depth <= self.depth {
+                break;
+            }
+            count += 1;
+        }
+
+        count
+    }
+
     pub fn find_symbol_any(&self, identifier: &Token) -> Result<Option<Symbol>, SpruceErr> {
         let sliced_id = identifier.lexeme.as_ref().unwrap().get_slice();
 
@@ -160,23 +173,27 @@ impl SymbolTable {
         token: &Token,
         is_mutable: bool,
         allow_override: bool,
-    ) -> Result<(), SpruceErr> {
+    ) -> Result<u16, SpruceErr> {
         let identifier = get_identifier_or_string(token);
 
-        if !allow_override && self.find_local_symbol(&identifier).is_some() {
-            let file_path = token
-                .lexeme
-                .as_ref()
-                .map(|span| (*span.source.file_path).clone());
+        if let Some(sym) = self.find_local_symbol(&identifier) {
+            if !allow_override {
+                let file_path = token
+                    .lexeme
+                    .as_ref()
+                    .map(|span| (*span.source.file_path).clone());
 
-            return Err(SpruceErr::new(
-                format!("Symbol with name '{identifier}' already exists in scope"),
-                SpruceErrData::Compiler {
-                    file_path,
-                    line: token.line,
-                    column: token.column,
-                },
-            ));
+                return Err(SpruceErr::new(
+                    format!("Symbol with name '{identifier}' already exists in scope"),
+                    SpruceErrData::Compiler {
+                        file_path,
+                        line: token.line,
+                        column: token.column,
+                    },
+                ));
+            }
+
+            return Ok(sym.index);
         }
 
         if *self.in_depth.last().unwrap() == u16::MAX {
@@ -195,14 +212,15 @@ impl SymbolTable {
             ));
         }
 
+        let index = *self.in_depth.last().unwrap();
         self.scope.push(Symbol {
             identifier,
             mutable: is_mutable,
-            index: *self.in_depth.last().unwrap(),
+            index,
             depth: self.depth,
         });
         *self.in_depth.last_mut().unwrap() += 1;
 
-        Ok(())
+        Ok(index)
     }
 }

@@ -436,6 +436,15 @@ impl<'a> ByteCompiler<'a> {
         self.func().code[start + 2] = r;
     }
 
+    fn pop_in_depth(&mut self) {
+        let current = self.symbol_table.get_in_depth();
+        if current == 1 {
+            self.write(ByteCode::Pop);
+        } else if current > 1 {
+            self.write_op_u8(ByteCode::PopN, current as u8);
+        }
+    }
+
     #[inline]
     fn inject_symbol(&mut self, identifier: &str, is_mutable: bool) {
         self.symbol_table
@@ -903,15 +912,18 @@ impl<'a> ByteCompiler<'a> {
                 .add_global_symbol(&item.token, *is_mutable, index)?;
         } else if self.symbol_table.find_local_symbol(slice).is_some() {
             // Add new symbol
-            _ = self
-                .symbol_table
-                .add_symbol(&item.token, *is_mutable, true)
-                .map_err(|e| self.error(e));
+            match self.symbol_table.add_symbol(&item.token, *is_mutable, true) {
+                Ok(idx) => self.write_op_u8(ByteCode::SetLocal, idx as u8),
+                Err(e) => self.error(e),
+            }
         } else {
-            _ = self
+            match self
                 .symbol_table
                 .add_symbol(&item.token, *is_mutable, false)
-                .map_err(|e| self.error(e));
+            {
+                Ok(idx) => self.write_op_u8(ByteCode::SetLocal, idx as u8),
+                Err(e) => self.error(e),
+            }
         }
 
         Ok(())
@@ -1034,6 +1046,9 @@ impl<'a> ByteCompiler<'a> {
         self.write_op_u16(ByteCode::Error, 0);
 
         self.visit(body)?;
+
+        self.pop_in_depth();
+
         self.write_op_u16(ByteCode::Jump, before_expr as u16);
 
         let len = self.func().code.len() as u16;
@@ -1045,6 +1060,7 @@ impl<'a> ByteCompiler<'a> {
     fn visit_loop_statement(&mut self, inner: &Box<Ast>) -> Result<(), SpruceErr> {
         let before_loop = self.func().code.len();
         self.visit(inner)?;
+        self.pop_in_depth();
         self.write_op_u16(ByteCode::Jump, before_loop as u16);
 
         Ok(())
@@ -1298,7 +1314,7 @@ impl<'a> ByteCompiler<'a> {
         if self.current_kind.is_some() {
             let module = &self.vm.constants[module_idx as usize];
             self.add_item_to_current(identifier, module.clone());
-        } else {
+        } else if !self.symbol_table.is_global() {
             self.write_op_u8(ByteCode::ConstantByte, module_idx as u8);
         }
 

@@ -463,6 +463,10 @@ impl VM {
                 }
 
                 ByteCode::Pop => _ = self.stack.pop(),
+                ByteCode::PopN => {
+                    let count = self.read_u8() as usize;
+                    _ = self.stack.drain(self.stack.len() - count..);
+                }
 
                 ByteCode::Add | ByteCode::Sub | ByteCode::Mul | ByteCode::Div => {
                     let (lhs, rhs) = self.maybe_get_top_two()?;
@@ -892,6 +896,7 @@ impl VM {
         self.register_function("dbg_coroutine_data", None, &super::nt_dbg_coroutine_data);
         self.register_function("dbg_print_function", None, &super::nt_dbg_print_function);
         self.register_function("dbg_stack", None, &super::nt_dbg_stack);
+        self.register_function("dbg_function_stack", None, &super::nt_dbg_function_stack);
         self.register_function("dbg_globals", None, &super::nt_dbg_globals);
     }
 

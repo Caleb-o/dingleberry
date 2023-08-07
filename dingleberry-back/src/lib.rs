@@ -36,9 +36,10 @@ pub fn type_name_to_int(type_name: &str) -> u8 {
         "function" => 6,
         "nativefn" => 7,
         "module" => 8,
-        "struct" | "instance" => 9,
-        "nativeobj" => 10,
-        "coroutine" => 11,
+        "struct" | "struct_instance" => 9,
+        "class" | "class_instance" => 10,
+        "nativeobj" => 11,
+        "coroutine" => 12,
         _ => u8::MAX,
     }
 }
@@ -214,7 +215,32 @@ fn nt_dbg_print_function(vm: &mut VM, _: Vec<Value>) -> Value {
 }
 
 fn nt_dbg_stack(vm: &mut VM, _: Vec<Value>) -> Value {
-    println!("Stack {:?}", vm.stack);
+    print!("Stack [");
+    for (idx, item) in vm.stack.iter().enumerate() {
+        print!("{item}");
+
+        if idx < vm.stack.len() - 1 {
+            print!(", ");
+        }
+    }
+    println!("]");
+    Value::None
+}
+
+fn nt_dbg_function_stack(vm: &mut VM, _: Vec<Value>) -> Value {
+    let call_stack = vm.get_callstack();
+    let last_frame = call_stack.last().unwrap();
+    let start = last_frame.stack_start;
+
+    print!("Stack [");
+    for (idx, item) in vm.stack.iter().skip(start).enumerate() {
+        print!("{item}");
+
+        if idx + start < vm.stack.len() - 1 {
+            print!(", ");
+        }
+    }
+    println!("]");
     Value::None
 }
 
