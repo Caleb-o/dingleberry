@@ -140,7 +140,6 @@ impl SymbolTable {
             index: str_idx,
             depth: 0,
         });
-        *self.in_depth.last_mut().unwrap() += 1;
 
         Ok(())
     }
