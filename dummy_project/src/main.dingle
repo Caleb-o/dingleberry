@@ -1,4 +1,4 @@
-include 'testing' in testing;
+include 'testing';
 
-let tester = testing.Tester.new([('Hello', fn { true })]);
+let tester = Testing.Tester.new([('Hello', fn { true })]);
 tester.run();
