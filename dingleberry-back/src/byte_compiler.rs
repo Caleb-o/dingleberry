@@ -109,7 +109,7 @@ pub struct ByteCompiler<'a> {
 impl<'a> ByteCompiler<'a> {
     pub fn new(vm: &'a mut VM) -> Self {
         Self {
-            current_func: Some(Function::new(true, Some("script".into()), 0)),
+            current_func: Some(Function::new(true, Some("script".to_string()), 0)),
             current_kind: None,
             symbol_table: SymbolTable::new(),
             ctx: Context::None,
@@ -149,9 +149,23 @@ impl<'a> ByteCompiler<'a> {
         current
     }
 
+    #[inline]
     fn error(&mut self, err: SpruceErr) {
         self.had_error += 1;
         err.display();
+    }
+
+    fn error_w(&mut self, token: &Token, msg: String) {
+        let file_path = Self::get_filepath(token);
+
+        self.error(SpruceErr::new(
+            msg,
+            SpruceErrData::Compiler {
+                file_path,
+                line: token.line,
+                column: token.column,
+            },
+        ));
     }
 
     fn add_constant(&mut self, value: Value) -> u16 {
@@ -606,16 +620,10 @@ impl<'a> ByteCompiler<'a> {
         }
 
         if values.len() > u16::MAX as usize {
-            let file_path = Self::get_filepath(&item.token);
-
-            self.error(SpruceErr::new(
+            self.error_w(
+                &item.token,
                 "More than 65535 values in tuple literal".to_string(),
-                SpruceErrData::Compiler {
-                    file_path,
-                    line: item.token.line,
-                    column: item.token.column,
-                },
-            ));
+            );
         }
 
         self.write_op_u16(ByteCode::IntoTuple, values.len() as u16);
@@ -631,16 +639,10 @@ impl<'a> ByteCompiler<'a> {
         }
 
         if values.len() > u16::MAX as usize {
-            let file_path = Self::get_filepath(&item.token);
-
-            self.error(SpruceErr::new(
+            self.error_w(
+                &item.token,
                 "More than 65535 values in array literal".to_string(),
-                SpruceErrData::Compiler {
-                    file_path,
-                    line: item.token.line,
-                    column: item.token.column,
-                },
-            ));
+            );
         }
 
         self.write_op_u16(ByteCode::IntoList, values.len() as u16);
@@ -729,21 +731,15 @@ impl<'a> ByteCompiler<'a> {
         self.add_symbol(&item.token, false, false);
 
         if *is_variadic && position != parameters.len() - 1 {
-            let file_path = Self::get_filepath(&item.token);
-
-            self.error(SpruceErr::new(
+            self.error_w(
+                &item.token,
                 format!(
                     "Parameter '{}' is variadic, but is in position {} of {}",
                     item.token.lexeme.as_ref().unwrap().get_slice(),
                     position + 1,
                     parameters.len()
                 ),
-                SpruceErrData::Compiler {
-                    file_path,
-                    line: item.token.line,
-                    column: item.token.column,
-                },
-            ));
+            );
         }
 
         Ok(*is_variadic)
@@ -876,16 +872,10 @@ impl<'a> ByteCompiler<'a> {
         } as u8;
 
         if arguments.len() > u8::MAX as usize {
-            let file_path = Self::get_filepath(&item.token);
-
-            self.error(SpruceErr::new(
+            self.error_w(
+                &item.token,
                 "More than 256 arguments in function call".to_string(),
-                SpruceErrData::Compiler {
-                    file_path,
-                    line: item.token.line,
-                    column: item.token.column,
-                },
-            ));
+            );
         }
 
         self.write_op_u8(ByteCode::Call, arguments.len() as u8 + literal_call);
@@ -965,16 +955,10 @@ impl<'a> ByteCompiler<'a> {
 
             if let Some((sym, is_inner)) = stuff {
                 if !sym.mutable {
-                    let file_path = Self::get_filepath(&item.token);
-
-                    self.error(SpruceErr::new(
+                    self.error_w(
+                        &item.token,
                         format!("Cannot mutate immutable identifier '{}'", sym.identifier),
-                        SpruceErrData::Compiler {
-                            file_path,
-                            line: item.token.line,
-                            column: item.token.column,
-                        },
-                    ));
+                    );
                 }
 
                 if is_inner {
@@ -998,16 +982,10 @@ impl<'a> ByteCompiler<'a> {
         }) = self.symbol_table.find_symbol_any(&lhs.token)?
         {
             if !mutable {
-                let file_path = Self::get_filepath(&item.token);
-
-                self.error(SpruceErr::new(
+                self.error_w(
+                    &item.token,
                     format!("Cannot mutate immutable identifier '{identifier}'"),
-                    SpruceErrData::Compiler {
-                        file_path,
-                        line: item.token.line,
-                        column: item.token.column,
-                    },
-                ));
+                );
             }
 
             if depth == 0 {
@@ -1016,17 +994,8 @@ impl<'a> ByteCompiler<'a> {
                 self.write_op_u8(ByteCode::SetLocal, index as u8);
             };
         } else {
-            let file_path = Self::get_filepath(&item.token);
             let identifier = lhs.token.lexeme.as_ref().unwrap().get_slice();
-
-            self.error(SpruceErr::new(
-                format!("Binding '{identifier}' does not exist"),
-                SpruceErrData::Compiler {
-                    file_path,
-                    line: item.token.line,
-                    column: item.token.column,
-                },
-            ));
+            self.error_w(&lhs.token, format!("Binding '{identifier}' does not exist"));
         }
 
         Ok(())
@@ -1170,17 +1139,11 @@ impl<'a> ByteCompiler<'a> {
         maybe_expr: &Option<Box<Ast>>,
     ) -> Result<(), SpruceErr> {
         if self.ctx != Context::Function(true) {
-            let file_path = Self::get_filepath(&item.token);
-
-            self.error(SpruceErr::new(
+            self.error_w(
+                &item.token,
                 "Cannot yield outside of a function or inside a function that does not yield"
-                    .into(),
-                SpruceErrData::Compiler {
-                    file_path,
-                    line: item.token.line,
-                    column: item.token.column,
-                },
-            ));
+                    .to_string(),
+            );
         }
 
         if let Some(expr) = maybe_expr {
@@ -1204,16 +1167,10 @@ impl<'a> ByteCompiler<'a> {
         let type_idx = type_name_to_int(type_name);
 
         if type_idx == u8::MAX {
-            let file_path = Self::get_filepath(&item.token);
-
-            self.error(SpruceErr::new(
+            self.error_w(
+                &item.token,
                 format!("Invalid type name '{type_name}' for type value"),
-                SpruceErrData::Compiler {
-                    file_path,
-                    line: item.token.line,
-                    column: item.token.column,
-                },
-            ));
+            )
         }
 
         let value = Value::Number(type_idx as f32);
@@ -1244,16 +1201,7 @@ impl<'a> ByteCompiler<'a> {
         }
 
         if !matches!(self.ctx, Context::Function(_)) {
-            let file_path = Self::get_filepath(&item.token);
-
-            self.error(SpruceErr::new(
-                "Cannot return outside function".into(),
-                SpruceErrData::Compiler {
-                    file_path,
-                    line: item.token.line,
-                    column: item.token.column,
-                },
-            ));
+            self.error_w(&item.token, "Cannot return outside function".to_string());
         }
 
         Ok(())
@@ -1269,17 +1217,11 @@ impl<'a> ByteCompiler<'a> {
 
             if let AstData::ExpressionStatement(is_stmt, _) = &stmt.data {
                 if !is_stmt && idx != statements.len() - 1 {
-                    let file_path = Self::get_filepath(&stmt.token);
-
-                    self.error(SpruceErr::new(
+                    self.error_w(
+                        &stmt.token,
                         "Cannot use bare expression unless it is the last expression in the body"
-                            .into(),
-                        SpruceErrData::Compiler {
-                            file_path,
-                            line: stmt.token.line,
-                            column: stmt.token.column,
-                        },
-                    ));
+                            .to_string(),
+                    );
                 }
             }
         }
@@ -1319,17 +1261,11 @@ impl<'a> ByteCompiler<'a> {
 
             if let AstData::ExpressionStatement(is_stmt, _) = &stmt.data {
                 if !is_stmt && idx != statements.len() - 1 {
-                    let file_path = Self::get_filepath(&stmt.token);
-
-                    self.error(SpruceErr::new(
+                    self.error_w(
+                        &stmt.token,
                         "Cannot use bare expression unless it is the last expression in the body"
-                            .into(),
-                        SpruceErrData::Compiler {
-                            file_path,
-                            line: stmt.token.line,
-                            column: stmt.token.column,
-                        },
-                    ));
+                            .to_string(),
+                    );
                 }
             }
         }
@@ -1389,20 +1325,12 @@ impl<'a> ByteCompiler<'a> {
 
             for field in init_fields {
                 let identifier = get_identifier_or_string(field);
-                let file_path = Self::get_filepath(&field);
 
                 current_fields.push(identifier.clone());
                 _ = self.add_symbol(field, true, false);
 
                 if !current_field_names.insert(identifier.clone()) {
-                    self.error(SpruceErr::new(
-                        format!("Struct '{struct_identifier}' already contains init field '{identifier}'"),
-                        SpruceErrData::Compiler {
-                            file_path: file_path.clone(),
-                            line: field.line,
-                            column: field.column,
-                        },
-                    ));
+                    self.error_w(field, format!("Struct '{struct_identifier}' already contains init field '{identifier}'"));
                 }
             }
 
@@ -1416,43 +1344,19 @@ impl<'a> ByteCompiler<'a> {
             match &item.data {
                 AstData::Function(func) if *is_static => {
                     if !func.is_static {
-                        let file_path = Self::get_filepath(&item.token);
-                        self.error(SpruceErr::new(
-                            format!("Static struct '{struct_identifier}' cannot contain non-static function '{}'", item.token.lexeme.as_ref().unwrap().get_slice()),
-                            SpruceErrData::Compiler {
-                                file_path: file_path.clone(),
-                                line: item.token.line,
-                                column: item.token.column,
-                            },
-                        ));
+                        self.error_w(&item.token, format!("Static struct '{struct_identifier}' cannot contain non-static function '{}'", item.token.lexeme.as_ref().unwrap().get_slice()));
                     }
                 }
 
                 AstData::StructDef(struct_def) if *is_static => {
                     if !struct_def.is_static {
-                        let file_path = Self::get_filepath(&item.token);
-                        self.error(SpruceErr::new(
-                            format!("Static struct '{struct_identifier}' cannot contain non-static struct '{}'", item.token.lexeme.as_ref().unwrap().get_slice()),
-                            SpruceErrData::Compiler {
-                                file_path: file_path.clone(),
-                                line: item.token.line,
-                                column: item.token.column,
-                            },
-                        ));
+                        self.error_w(&item.token, format!("Static struct '{struct_identifier}' cannot contain non-static struct '{}'", item.token.lexeme.as_ref().unwrap().get_slice()));
                     }
                 }
 
                 AstData::ClassDef(class_def) if *is_static => {
                     if !class_def.is_static {
-                        let file_path = Self::get_filepath(&item.token);
-                        self.error(SpruceErr::new(
-                            format!("Static class '{struct_identifier}' cannot contain non-static class '{}'", item.token.lexeme.as_ref().unwrap().get_slice()),
-                            SpruceErrData::Compiler {
-                                file_path: file_path.clone(),
-                                line: item.token.line,
-                                column: item.token.column,
-                            },
-                        ));
+                        self.error_w(&item.token, format!("Static class '{struct_identifier}' cannot contain non-static class '{}'", item.token.lexeme.as_ref().unwrap().get_slice()));
                     }
                 }
 
@@ -1500,22 +1404,17 @@ impl<'a> ByteCompiler<'a> {
 
             for field in init_fields {
                 let identifier = get_identifier_or_string(field);
-                let file_path = Self::get_filepath(&field);
 
                 current_fields.push(identifier.clone());
                 _ = self.add_symbol(field, true, false);
 
                 if !current_field_names.insert(identifier.clone()) {
-                    self.error(SpruceErr::new(
+                    self.error_w(
+                        field,
                         format!(
                             "Class '{class_identifier}' already contains init field '{identifier}'"
                         ),
-                        SpruceErrData::Compiler {
-                            file_path: file_path.clone(),
-                            line: field.line,
-                            column: field.column,
-                        },
-                    ));
+                    );
                 }
             }
 
@@ -1529,43 +1428,19 @@ impl<'a> ByteCompiler<'a> {
             match &item.data {
                 AstData::Function(func) if *is_static => {
                     if !func.is_static {
-                        let file_path = Self::get_filepath(&item.token);
-                        self.error(SpruceErr::new(
-                            format!("Static class '{class_identifier}' cannot contain non-static function '{}'", item.token.lexeme.as_ref().unwrap().get_slice()),
-                            SpruceErrData::Compiler {
-                                file_path: file_path.clone(),
-                                line: item.token.line,
-                                column: item.token.column,
-                            },
-                        ));
+                        self.error_w(&item.token, format!("Static class '{class_identifier}' cannot contain non-static function '{}'", item.token.lexeme.as_ref().unwrap().get_slice()));
                     }
                 }
 
                 AstData::StructDef(struct_def) if *is_static => {
                     if !struct_def.is_static {
-                        let file_path = Self::get_filepath(&item.token);
-                        self.error(SpruceErr::new(
-                            format!("Static class '{class_identifier}' cannot contain non-static struct '{}'", item.token.lexeme.as_ref().unwrap().get_slice()),
-                            SpruceErrData::Compiler {
-                                file_path: file_path.clone(),
-                                line: item.token.line,
-                                column: item.token.column,
-                            },
-                        ));
+                        self.error_w(&item.token, format!("Static class '{class_identifier}' cannot contain non-static struct '{}'", item.token.lexeme.as_ref().unwrap().get_slice()));
                     }
                 }
 
                 AstData::ClassDef(class_def) if *is_static => {
                     if !class_def.is_static {
-                        let file_path = Self::get_filepath(&item.token);
-                        self.error(SpruceErr::new(
-                            format!("Static class '{class_identifier}' cannot contain non-static class '{}'", item.token.lexeme.as_ref().unwrap().get_slice()),
-                            SpruceErrData::Compiler {
-                                file_path: file_path.clone(),
-                                line: item.token.line,
-                                column: item.token.column,
-                            },
-                        ));
+                        self.error_w(&item.token, format!("Static class '{class_identifier}' cannot contain non-static class '{}'", item.token.lexeme.as_ref().unwrap().get_slice()));
                     }
                 }
 
@@ -1591,16 +1466,10 @@ impl<'a> ByteCompiler<'a> {
 
     fn visit_this(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
         if self.container_ctx == ContainerContext::None {
-            let file_path = Self::get_filepath(&item.token);
-
-            self.error(SpruceErr::new(
-                "Cannot use 'this' outside of structs, classes or modules".into(),
-                SpruceErrData::Compiler {
-                    file_path,
-                    line: item.token.line,
-                    column: item.token.column,
-                },
-            ));
+            self.error_w(
+                &item.token,
+                "Cannot use 'this' outside of structs, classes or modules".to_string(),
+            );
         }
 
         self.write(ByteCode::This);
@@ -1610,16 +1479,10 @@ impl<'a> ByteCompiler<'a> {
 
     fn visit_super(&mut self, item: &Box<Ast>) -> Result<(), SpruceErr> {
         if self.container_ctx != ContainerContext::Class {
-            let file_path = Self::get_filepath(&item.token);
-
-            self.error(SpruceErr::new(
-                "Cannot use 'super' outside of classes".into(),
-                SpruceErrData::Compiler {
-                    file_path,
-                    line: item.token.line,
-                    column: item.token.column,
-                },
-            ));
+            self.error_w(
+                &item.token,
+                "Cannot use 'super' outside of classes".to_string(),
+            );
         }
 
         self.write(ByteCode::Super);
