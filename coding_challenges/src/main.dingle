@@ -1,0 +1,60 @@
+include 'testing';
+// Exercises
+include 'smallbig';
+include 'absolute_sum';
+include 'array_of_mul';
+
+{
+    let items = [];
+    register_small_big(items);
+    register_abs_sum(items);
+    register_array_of_mul(items);
+
+    let tester = Testing.Tester.new(items);
+    tester.run();
+}
+
+fn register_small_big(items) {
+    List.extend(items, [
+        ('small big: ordered', fn {
+            SmallBig.find_min_max([1, 2, 3, 4, 5]) == (1, 5)
+        }),
+        ('small big: large than small', fn {
+            SmallBig.find_min_max([2334454, 5]) == (5, 2334454)
+        }),
+        ('small big: single item', fn {
+            SmallBig.find_min_max([1]) == (1, 1)
+        })
+    ]);
+}
+
+fn register_abs_sum(items) {
+    List.extend(items, [
+        ('abs sum: mixed', fn {
+            AbsoluteSum.get_abs_sum([2, -1, 4, 8, 10]) == 25
+        }),
+        ('abs sum: all negative', fn {
+            AbsoluteSum.get_abs_sum([-3, -4, -10, -2, -3]) == 22
+        }),
+        ('abs sum: all positve', fn {
+            AbsoluteSum.get_abs_sum([2, 4, 6, 8, 10]) == 30
+        }),
+        ('abs sum: single positive', fn {
+            AbsoluteSum.get_abs_sum([1]) == 1
+        })
+    ]);
+}
+
+fn register_array_of_mul(items) {
+    List.extend(items, [
+        ('array of mul: 7 5', fn {
+            ArrayOfMultiples.aom(7, 5) == [7, 14, 21, 28, 35]
+        }),
+        ('array of mul: 12 10', fn {
+            ArrayOfMultiples.aom(12, 10) == [12, 24, 36, 48, 60, 72, 84, 96, 108, 120]
+        }),
+        ('array of mul: 17 6', fn {
+            ArrayOfMultiples.aom(17, 6) == [17, 34, 51, 68, 85, 102]
+        })
+    ]);
+}

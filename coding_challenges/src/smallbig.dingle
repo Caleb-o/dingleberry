@@ -1,0 +1,33 @@
+module SmallBig {
+    fn find_min_max(items) {
+        if type_of(items) != @list {
+            return (0, 0);
+        }
+
+        if len(items) == 1 {
+            return (items[0], items[0]);
+        }
+
+        let mut min = items[0];
+        let mut max = items[0];
+
+        let mut idx = 0;
+        let length = len(items);
+
+        while idx < length {
+            let item = items[idx];
+            
+            if item < min {
+                min = item;
+            }
+
+            if item > max {
+                max = item;
+            }
+
+            idx = idx + 1;
+        }
+
+        (min, max)
+    }
+}

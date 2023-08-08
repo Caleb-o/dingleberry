@@ -122,7 +122,7 @@ fn start_vm(args: RunArgs) {
                     "Strings" | "strings" => native_flags.strings = true,
                     "List" | "list" => native_flags.list = true,
                     "Runtime" | "runtime" => native_flags.runtime = true,
-                    "Coroutine" | "oroutine" => native_flags.coroutine = true,
+                    "Coroutine" | "coroutine" => native_flags.coroutine = true,
                     _ => {}
                 }
             }
