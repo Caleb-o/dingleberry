@@ -424,6 +424,23 @@ impl<'a> ByteCompiler<'a> {
         self.func().code.push(op as u8);
     }
 
+    fn write_constant(&mut self, index: u16) {
+        if index == u16::MAX {
+            unimplemented!("Max constant count reached!");
+        }
+
+        if index <= u8::MAX as u16 {
+            self.func()
+                .code
+                .extend(&[ByteCode::ConstantByte as u8, index as u8]);
+        } else {
+            let [a, b] = index.to_le_bytes();
+            self.func()
+                .code
+                .extend(&[ByteCode::ConstantShort as u8, a, b]);
+        };
+    }
+
     #[inline]
     fn write_op_u8(&mut self, op: ByteCode, index: u8) {
         self.func().code.extend(&[op as u8, index]);
@@ -603,10 +620,10 @@ impl<'a> ByteCompiler<'a> {
         };
 
         if let Some(index) = self.find_constant(&value) {
-            self.write_op_u8(ByteCode::ConstantByte, index as u8);
+            self.write_constant(index);
         } else {
             let index = self.add_constant(value);
-            self.write_op_u8(ByteCode::ConstantByte, index as u8);
+            self.write_constant(index);
         }
 
         Ok(())
@@ -835,7 +852,7 @@ impl<'a> ByteCompiler<'a> {
                     self.add_item_to_current(identifier.unwrap().clone(), func.clone());
                 }
             } else {
-                self.write_op_u8(ByteCode::ConstantByte, index as u8);
+                self.write_constant(index);
             }
         }
 
@@ -1176,10 +1193,10 @@ impl<'a> ByteCompiler<'a> {
         let value = Value::Number(type_idx as f32);
 
         if let Some(index) = self.find_constant(&value) {
-            self.write_op_u8(ByteCode::ConstantByte, index as u8);
+            self.write_constant(index);
         } else {
             let index = self.add_constant(value);
-            self.write_op_u8(ByteCode::ConstantByte, index as u8);
+            self.write_constant(index);
         }
 
         Ok(())
@@ -1295,7 +1312,7 @@ impl<'a> ByteCompiler<'a> {
             let module = &self.vm.constants[module_idx as usize];
             self.add_item_to_current(identifier, module.clone());
         } else if !self.symbol_table.is_global() {
-            self.write_op_u8(ByteCode::ConstantByte, module_idx as u8);
+            self.write_constant(module_idx);
         }
 
         self.container_ctx = last_ctx;
@@ -1373,7 +1390,7 @@ impl<'a> ByteCompiler<'a> {
                 self.add_item_to_current(struct_identifier, struct_def.clone());
             }
 
-            _ => self.write_op_u8(ByteCode::ConstantByte, struct_idx as u8),
+            _ => self.write_constant(struct_idx),
         }
 
         self.container_ctx = last_ctx;
@@ -1457,7 +1474,7 @@ impl<'a> ByteCompiler<'a> {
                 self.add_item_to_current(class_identifier, class_def.clone());
             }
 
-            _ => self.write_op_u8(ByteCode::ConstantByte, class_idx as u8),
+            _ => self.write_constant(class_idx),
         }
 
         self.container_ctx = last_ctx;
