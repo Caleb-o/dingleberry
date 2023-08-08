@@ -3,45 +3,6 @@ use std::fs::{self};
 use dingleberry_back::{object::ObjectData, value::Value, vm::VM};
 use dingleberry_shared::NativeModuleFlags;
 
-// pub struct Sdl2App {
-//     pub context: Sdl,
-//     pub canvas: WindowCanvas,
-//     pub event_pump: EventPump,
-//     pub fps_limit: u32,
-
-//     running: bool,
-// }
-
-// impl Sdl2App {
-//     pub fn new(title: &str, width: u32, height: u32, fps_limit: u32) -> anyhow::Result<Self> {
-//         let sdl_context = sdl2::init().map_err(SdlAppError::new)?;
-//         let video_subsystem = sdl_context.video().map_err(SdlAppError::new)?;
-//         let ttf_context = sdl2::ttf::init()?;
-
-//         let window = video_subsystem
-//             .window(title, width, height)
-//             .position_centered()
-//             .build()
-//             .unwrap();
-
-//         let canvas = window.into_canvas().accelerated().build().unwrap();
-//         let event_pump = sdl_context.event_pump().map_err(SdlAppError::new)?;
-//         let texture_creator = canvas.texture_creator();
-
-//         Ok(Self {
-//             context: sdl_context,
-//             ttf_context,
-//             video: video_subsystem,
-//             canvas,
-//             texture_creator,
-//             event_pump,
-//             fps_limit,
-//             textures: Vec::new(),
-//             running: true,
-//         })
-//     }
-// }
-
 pub fn register_native_objects(vm: &mut VM, native_flags: NativeModuleFlags) {
     if native_flags.file {
         vm.build_module("File", false, |vm, module| {
