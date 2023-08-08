@@ -528,18 +528,22 @@ impl<'a> ByteCompiler<'a> {
             let stuff = if let Some((sym, is_inner)) =
                 self.symbol_table.find_local_or_inner_symbol(&item.token)
             {
-                Some((sym.identifier.clone(), is_inner))
+                Some((sym.clone(), is_inner))
             } else {
                 None
             };
 
-            if let Some((identifier, is_inner)) = stuff {
+            if let Some((sym, is_inner)) = stuff {
                 if is_inner {
-                    let index = self.get_string_or_insert(identifier);
+                    let index = self.get_string_or_insert(sym.identifier.clone());
                     self.write(ByteCode::This);
                     self.write_op_u16(ByteCode::PropertyGet, index);
                     return Ok(());
                 }
+
+                // Note: Can't be at depth 0 if inside a struct/class etc
+                self.write_op_u8(ByteCode::GetLocal, sym.index as u8);
+                return Ok(());
             }
         }
 
@@ -950,6 +954,42 @@ impl<'a> ByteCompiler<'a> {
         let VarAssign { lhs, expression } = &assign;
         self.visit(expression)?;
 
+        if self.container_ctx != ContainerContext::None {
+            let stuff = if let Some((sym, is_inner)) =
+                self.symbol_table.find_local_or_inner_symbol(&item.token)
+            {
+                Some((sym.clone(), is_inner))
+            } else {
+                None
+            };
+
+            if let Some((sym, is_inner)) = stuff {
+                if !sym.mutable {
+                    let file_path = Self::get_filepath(&item.token);
+
+                    self.error(SpruceErr::new(
+                        format!("Cannot mutate immutable identifier '{}'", sym.identifier),
+                        SpruceErrData::Compiler {
+                            file_path,
+                            line: item.token.line,
+                            column: item.token.column,
+                        },
+                    ));
+                }
+
+                if is_inner {
+                    let index = self.get_string_or_insert(sym.identifier.clone());
+                    self.write(ByteCode::This);
+                    self.write_op_u16(ByteCode::PropertySet, index);
+                    return Ok(());
+                }
+
+                // Note: Can't be at depth 0 if inside a struct/class etc
+                self.write_op_u8(ByteCode::SetLocal, sym.index as u8);
+                return Ok(());
+            }
+        }
+
         if let Some(Symbol {
             identifier,
             mutable,
@@ -1352,7 +1392,7 @@ impl<'a> ByteCompiler<'a> {
                 let file_path = Self::get_filepath(&field);
 
                 current_fields.push(identifier.clone());
-                _ = self.add_symbol(field, false, false);
+                _ = self.add_symbol(field, true, false);
 
                 if !current_field_names.insert(identifier.clone()) {
                     self.error(SpruceErr::new(
@@ -1463,7 +1503,7 @@ impl<'a> ByteCompiler<'a> {
                 let file_path = Self::get_filepath(&field);
 
                 current_fields.push(identifier.clone());
-                _ = self.add_symbol(field, false, false);
+                _ = self.add_symbol(field, true, false);
 
                 if !current_field_names.insert(identifier.clone()) {
                     self.error(SpruceErr::new(
