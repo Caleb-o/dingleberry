@@ -123,7 +123,7 @@ fn start_vm(args: RunArgs) {
                     "List" | "list" => native_flags.list = true,
                     "Runtime" | "runtime" => native_flags.runtime = true,
                     "Coroutine" | "coroutine" => native_flags.coroutine = true,
-                    _ => {}
+                    u => eprintln!("Unknown native flag '{u}'"),
                 }
             }
         }
